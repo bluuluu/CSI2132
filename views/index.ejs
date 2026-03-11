@@ -1,0 +1,20 @@
+<%- include('partials/header', { title: 'Home', message }) %>
+
+<section class="grid stats">
+  <article class="card"><h2>Hotels</h2><p><%= counts.hotels %></p></article>
+  <article class="card"><h2>Rooms</h2><p><%= counts.rooms %></p></article>
+  <article class="card"><h2>Customers</h2><p><%= counts.customers %></p></article>
+  <article class="card"><h2>Employees</h2><p><%= counts.employees %></p></article>
+</section>
+
+<section class="card">
+  <h2>Deliverable 2 Coverage</h2>
+  <ul>
+    <li>Customer search with all required filters and booking flow</li>
+    <li>Employee actions: direct renting, booking-to-renting, and payment entry</li>
+    <li>Insert / update / delete for customers, employees, hotels, and rooms</li>
+    <li>SQL views page for both required project views</li>
+  </ul>
+</section>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,36 @@
+<%- include('partials/header', { title: 'SQL Views', message }) %>
+
+<section class="card">
+  <h2>View 1: Available Rooms Per Area</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Area</th><th>Available Rooms</th></tr></thead>
+      <tbody>
+        <% byArea.forEach(r => { %>
+          <tr><td><%= r.area %></td><td><%= r.available_rooms %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>View 2: Aggregated Capacity Per Hotel</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Hotel ID</th><th>Hotel Name</th><th>City</th><th>Aggregated Capacity</th></tr></thead>
+      <tbody>
+        <% byHotel.forEach(r => { %>
+          <tr>
+            <td><%= r.hotel_id %></td>
+            <td><%= r.hotel_name %></td>
+            <td><%= r.city %></td>
+            <td><%= r.aggregated_capacity %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

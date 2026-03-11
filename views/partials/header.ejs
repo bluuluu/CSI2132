@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>eHotels - CSI2132 Deliverable 2</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/search">Customer Search</a>
+      <a href="/employee">Employee Panel</a>
+      <a href="/views">SQL Views</a>
+      <a href="/manage/customers">Customers CRUD</a>
+      <a href="/manage/employees">Employees CRUD</a>
+      <a href="/manage/hotels">Hotels CRUD</a>
+      <a href="/manage/rooms">Rooms CRUD</a>
+    </nav>
+  </header>
+  <main class="container">
+    <% if (message) { %>
+      <div class="alert <%= message.type %>"><%= message.text %></div>
+    <% } %>

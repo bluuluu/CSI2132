@@ -1,0 +1,71 @@
+<%- include('../partials/header', { title: 'Manage Hotels', message }) %>
+
+<section class="card">
+  <h2>Create Hotel</h2>
+  <form method="POST" action="/manage/hotels" class="grid form-grid">
+    <label>Chain
+      <select name="chain_id" required>
+        <% chains.forEach(c => { %><option value="<%= c.chain_id %>"><%= c.chain_name %></option><% }) %>
+      </select>
+    </label>
+    <label>Name <input name="hotel_name" required /></label>
+    <label>Category <input type="number" min="1" max="5" name="category" required /></label>
+    <label>Total Rooms <input type="number" min="1" name="total_rooms" required /></label>
+    <label>Address <input name="address_line" required /></label>
+    <label>City <input name="city" required /></label>
+    <label>State/Province <input name="state_province" required /></label>
+    <label>Country <input name="country" required /></label>
+    <label>Postal Code <input name="postal_code" required /></label>
+    <label>Email <input type="email" name="contact_email" required /></label>
+    <label>Phone <input name="contact_phone" required /></label>
+    <div class="actions"><button type="submit">Create</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Hotels</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Chain</th><th>City</th><th>Category</th><th>Total Rooms</th><th>Update</th><th>Delete</th></tr></thead>
+      <tbody>
+      <% hotels.forEach(h => { %>
+        <tr>
+          <td><%= h.hotel_id %></td>
+          <td><%= h.hotel_name %></td>
+          <td><%= h.chain_id %></td>
+          <td><%= h.city %></td>
+          <td><%= h.category %></td>
+          <td><%= h.total_rooms %></td>
+          <td>
+            <form method="POST" action="/manage/hotels/<%= h.hotel_id %>?_method=PATCH" class="inline-form stack-small">
+              <select name="chain_id" required>
+                <% chains.forEach(c => { %>
+                  <option value="<%= c.chain_id %>" <%= c.chain_id === h.chain_id ? 'selected' : '' %>><%= c.chain_name %></option>
+                <% }) %>
+              </select>
+              <input name="hotel_name" value="<%= h.hotel_name %>" required />
+              <input type="number" min="1" max="5" name="category" value="<%= h.category %>" required />
+              <input type="number" min="1" name="total_rooms" value="<%= h.total_rooms %>" required />
+              <input name="address_line" value="<%= h.address_line %>" required />
+              <input name="city" value="<%= h.city %>" required />
+              <input name="state_province" value="<%= h.state_province %>" required />
+              <input name="country" value="<%= h.country %>" required />
+              <input name="postal_code" value="<%= h.postal_code %>" required />
+              <input type="email" name="contact_email" value="<%= h.contact_email %>" required />
+              <input name="contact_phone" value="<%= h.contact_phone %>" required />
+              <button type="submit">Save</button>
+            </form>
+          </td>
+          <td>
+            <form method="POST" action="/manage/hotels/<%= h.hotel_id %>?_method=DELETE">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('../partials/footer') %>

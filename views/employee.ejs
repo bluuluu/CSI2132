@@ -1,0 +1,112 @@
+<%- include('partials/header', { title: 'Employee Panel', message }) %>
+
+<section class="card">
+  <h2>Transform Booking to Renting (Check-in)</h2>
+  <form method="POST" action="/employee/rentings/from-booking" class="grid form-grid">
+    <label>Booking ID <input type="number" name="booking_id" min="1" required /></label>
+    <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <div class="actions"><button type="submit">Transform</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Create Direct Renting</h2>
+  <form method="POST" action="/employee/rentings/direct" class="grid form-grid">
+    <label>Room
+      <select name="room_id" required>
+        <option value="">Choose</option>
+        <% availableRooms.forEach(r => { %>
+          <option value="<%= r.room_id %>">#<%= r.room_id %> (<%= r.hotel_name %>, <%= r.city %>)</option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Customer
+      <select name="customer_id" required>
+        <option value="">Choose</option>
+        <% customers.forEach(c => { %>
+          <option value="<%= c.customer_id %>">#<%= c.customer_id %> <%= c.first_name %> <%= c.last_name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Employee
+      <select name="employee_id" required>
+        <option value="">Choose</option>
+        <% employees.forEach(e => { %>
+          <option value="<%= e.employee_id %>">#<%= e.employee_id %> <%= e.first_name %> <%= e.last_name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Start Date <input type="date" name="start_date" required /></label>
+    <label>End Date <input type="date" name="end_date" required /></label>
+    <div class="actions"><button type="submit">Create Renting</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Insert Payment</h2>
+  <form method="POST" action="/employee/payments" class="grid form-grid">
+    <label>Renting ID <input type="number" name="renting_id" min="1" required /></label>
+    <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <label>Amount <input type="number" name="amount" step="0.01" min="0.01" required /></label>
+    <label>Method
+      <select name="method" required>
+        <% ['cash','credit','debit','online'].forEach(m => { %>
+          <option value="<%= m %>"><%= m %></option>
+        <% }) %>
+      </select>
+    </label>
+    <div class="actions"><button type="submit">Record Payment</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Current Bookings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
+      <tbody>
+      <% activeBookings.forEach(b => { %>
+        <tr>
+          <td><%= b.booking_id %></td>
+          <td><%= b.room_id %></td>
+          <td><%= b.customer_id %></td>
+          <td><%= b.start_date.toISOString().slice(0,10) %></td>
+          <td><%= b.end_date.toISOString().slice(0,10) %></td>
+          <td><%= b.status %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Current/Recent Rentings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Employee</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody>
+      <% activeRentings.forEach(r => { %>
+        <tr>
+          <td><%= r.renting_id %></td>
+          <td><%= r.room_id %></td>
+          <td><%= r.customer_id %></td>
+          <td><%= r.employee_id %></td>
+          <td><%= r.start_date.toISOString().slice(0,10) %></td>
+          <td><%= r.end_date.toISOString().slice(0,10) %></td>
+          <td><%= r.status %></td>
+          <td>
+            <% if (r.status === 'active') { %>
+            <form method="POST" action="/employee/rentings/<%= r.renting_id %>/complete?_method=PATCH">
+              <button type="submit">Complete</button>
+            </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,75 @@
+<%- include('../partials/header', { title: 'Manage Employees', message }) %>
+
+<section class="card">
+  <h2>Create Employee</h2>
+  <form method="POST" action="/manage/employees" class="grid form-grid">
+    <label>Legal ID <input name="legal_id" required /></label>
+    <label>ID Type
+      <select name="id_type" required>
+        <% ['SIN','SSN','DL','PASSPORT'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
+      </select>
+    </label>
+    <label>First Name <input name="first_name" required /></label>
+    <label>Last Name <input name="last_name" required /></label>
+    <label>Email <input type="email" name="email" required /></label>
+    <label>Phone <input name="phone" required /></label>
+    <label>Address <input name="address_line" required /></label>
+    <label>Hotel
+      <select name="hotel_id" required>
+        <% hotels.forEach(h => { %>
+          <option value="<%= h.hotel_id %>">#<%= h.hotel_id %> <%= h.hotel_name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Role <input name="role_title" required /></label>
+    <label>Hired On <input type="date" name="hired_on" required /></label>
+    <label class="checkline"><input type="checkbox" name="is_manager" /> Manager</label>
+    <div class="actions"><button type="submit">Create</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Employees</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Legal ID</th><th>Name</th><th>Hotel</th><th>Role</th><th>Manager</th><th>Update</th><th>Delete</th></tr></thead>
+      <tbody>
+        <% employees.forEach(e => { %>
+          <tr>
+            <td><%= e.employee_id %></td>
+            <td><%= e.legal_id %></td>
+            <td><%= e.first_name %> <%= e.last_name %></td>
+            <td><%= e.hotel_id %></td>
+            <td><%= e.role_title %></td>
+            <td><%= e.is_manager ? 'Yes' : 'No' %></td>
+            <td>
+              <form method="POST" action="/manage/employees/<%= e.employee_id %>?_method=PATCH" class="inline-form stack-small">
+                <input name="first_name" value="<%= e.first_name %>" required />
+                <input name="last_name" value="<%= e.last_name %>" required />
+                <input type="email" name="email" value="<%= e.email %>" required />
+                <input name="phone" value="<%= e.phone %>" required />
+                <input name="address_line" value="<%= e.address_line %>" required />
+                <select name="hotel_id" required>
+                  <% hotels.forEach(h => { %>
+                    <option value="<%= h.hotel_id %>" <%= h.hotel_id === e.hotel_id ? 'selected' : '' %>>#<%= h.hotel_id %> <%= h.hotel_name %></option>
+                  <% }) %>
+                </select>
+                <input name="role_title" value="<%= e.role_title %>" required />
+                <input type="date" name="hired_on" value="<%= e.hired_on.toISOString().slice(0,10) %>" required />
+                <label class="checkline"><input type="checkbox" name="is_manager" <%= e.is_manager ? 'checked' : '' %> /> Manager</label>
+                <button type="submit">Save</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="/manage/employees/<%= e.employee_id %>?_method=DELETE">
+                <button type="submit" class="danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('../partials/footer') %>

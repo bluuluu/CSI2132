@@ -1,0 +1,85 @@
+<%- include('../partials/header', { title: 'Manage Rooms', message }) %>
+
+<section class="card">
+  <h2>Create Room</h2>
+  <form method="POST" action="/manage/rooms" class="grid form-grid">
+    <label>Hotel
+      <select name="hotel_id" required>
+        <% hotels.forEach(h => { %><option value="<%= h.hotel_id %>">#<%= h.hotel_id %> <%= h.hotel_name %> (<%= h.city %>)</option><% }) %>
+      </select>
+    </label>
+    <label>Room Number <input name="room_number" required /></label>
+    <label>Capacity
+      <select name="capacity" required>
+        <% ['single','double','suite','family'].forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
+      </select>
+    </label>
+    <label>Price <input type="number" min="0.01" step="0.01" name="base_price" required /></label>
+    <label>Amenities <input name="amenities" required /></label>
+    <label>Issues <input name="issues" /></label>
+    <label>Status
+      <select name="current_status" required>
+        <% ['available','booked','rented','maintenance'].forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+      </select>
+    </label>
+    <label class="checkline"><input type="checkbox" name="has_sea_view" /> Sea View</label>
+    <label class="checkline"><input type="checkbox" name="has_mountain_view" /> Mountain View</label>
+    <label class="checkline"><input type="checkbox" name="is_extendable" /> Extendable</label>
+    <div class="actions"><button type="submit">Create</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Rooms</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Hotel</th><th>#</th><th>Capacity</th><th>Price</th><th>Status</th><th>Update</th><th>Delete</th></tr></thead>
+      <tbody>
+      <% rooms.forEach(r => { %>
+        <tr>
+          <td><%= r.room_id %></td>
+          <td><%= r.hotel_id %></td>
+          <td><%= r.room_number %></td>
+          <td><%= r.capacity %></td>
+          <td>$<%= r.base_price %></td>
+          <td><%= r.current_status %></td>
+          <td>
+            <form method="POST" action="/manage/rooms/<%= r.room_id %>?_method=PATCH" class="inline-form stack-small">
+              <select name="hotel_id" required>
+                <% hotels.forEach(h => { %>
+                  <option value="<%= h.hotel_id %>" <%= h.hotel_id === r.hotel_id ? 'selected' : '' %>>#<%= h.hotel_id %> <%= h.hotel_name %></option>
+                <% }) %>
+              </select>
+              <input name="room_number" value="<%= r.room_number %>" required />
+              <select name="capacity" required>
+                <% ['single','double','suite','family'].forEach(c => { %>
+                  <option value="<%= c %>" <%= c === r.capacity ? 'selected' : '' %>><%= c %></option>
+                <% }) %>
+              </select>
+              <input type="number" min="0.01" step="0.01" name="base_price" value="<%= r.base_price %>" required />
+              <input name="amenities" value="<%= r.amenities %>" required />
+              <input name="issues" value="<%= r.issues || '' %>" />
+              <select name="current_status" required>
+                <% ['available','booked','rented','maintenance'].forEach(s => { %>
+                  <option value="<%= s %>" <%= s === r.current_status ? 'selected' : '' %>><%= s %></option>
+                <% }) %>
+              </select>
+              <label class="checkline"><input type="checkbox" name="has_sea_view" <%= r.has_sea_view ? 'checked' : '' %> />Sea</label>
+              <label class="checkline"><input type="checkbox" name="has_mountain_view" <%= r.has_mountain_view ? 'checked' : '' %> />Mountain</label>
+              <label class="checkline"><input type="checkbox" name="is_extendable" <%= r.is_extendable ? 'checked' : '' %> />Extend</label>
+              <button type="submit">Save</button>
+            </form>
+          </td>
+          <td>
+            <form method="POST" action="/manage/rooms/<%= r.room_id %>?_method=DELETE">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('../partials/footer') %>
