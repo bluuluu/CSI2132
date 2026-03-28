@@ -1,10 +1,15 @@
 <%- include('partials/header', { title: 'Home', message }) %>
 
+<section class="page-intro">
+  <h2>Operations Dashboard</h2>
+  <p>Use the tabs above to run customer booking, employee renting, and full CRUD administration workflows.</p>
+</section>
+
 <section class="grid stats">
-  <article class="card"><h2>Hotels</h2><p><%= counts.hotels %></p></article>
-  <article class="card"><h2>Rooms</h2><p><%= counts.rooms %></p></article>
-  <article class="card"><h2>Customers</h2><p><%= counts.customers %></p></article>
-  <article class="card"><h2>Employees</h2><p><%= counts.employees %></p></article>
+  <article class="stat-tile"><h3>Hotels</h3><p><%= counts.hotels %></p></article>
+  <article class="stat-tile"><h3>Rooms</h3><p><%= counts.rooms %></p></article>
+  <article class="stat-tile"><h3>Customers</h3><p><%= counts.customers %></p></article>
+  <article class="stat-tile"><h3>Employees</h3><p><%= counts.employees %></p></article>
 </section>
 
 <section class="card">
@@ -15,6 +20,12 @@
     <li>Insert / update / delete for customers, employees, hotels, and rooms</li>
     <li>SQL views page for both required project views</li>
   </ul>
+  <div class="quick-links">
+    <a href="/search"><strong>Start Customer Search</strong><br />Filter room availability and create bookings.</a>
+    <a href="/employee"><strong>Open Employee Panel</strong><br />Transform bookings, create rentings, record payments.</a>
+    <a href="/views"><strong>Inspect SQL Views</strong><br />See available rooms per area and hotel capacity aggregate.</a>
+    <a href="/manage/rooms"><strong>Manage Room Records</strong><br />Maintain room inventory and current status.</a>
+  </div>
 </section>
 
 <%- include('partials/footer') %>

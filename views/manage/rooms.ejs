@@ -1,5 +1,10 @@
 <%- include('../partials/header', { title: 'Manage Rooms', message }) %>
 
+<section class="page-intro">
+  <h2>Room Inventory</h2>
+  <p>Control room availability details, pricing, and maintenance statuses.</p>
+</section>
+
 <section class="card">
   <h2>Create Room</h2>
   <form method="POST" action="/manage/rooms" class="grid form-grid">
@@ -35,6 +40,9 @@
     <table>
       <thead><tr><th>ID</th><th>Hotel</th><th>#</th><th>Capacity</th><th>Price</th><th>Status</th><th>Update</th><th>Delete</th></tr></thead>
       <tbody>
+      <% if (rooms.length === 0) { %>
+        <tr><td colspan="8" class="data-empty">No room records found.</td></tr>
+      <% } %>
       <% rooms.forEach(r => { %>
         <tr>
           <td><%= r.room_id %></td>
@@ -42,7 +50,7 @@
           <td><%= r.room_number %></td>
           <td><%= r.capacity %></td>
           <td>$<%= r.base_price %></td>
-          <td><%= r.current_status %></td>
+          <td><span class="status-badge status-<%= (r.current_status || '').replace(/[^a-z_]/g, '_') %>"><%= r.current_status %></span></td>
           <td>
             <form method="POST" action="/manage/rooms/<%= r.room_id %>?_method=PATCH" class="inline-form stack-small">
               <select name="hotel_id" required>

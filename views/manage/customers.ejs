@@ -1,5 +1,10 @@
 <%- include('../partials/header', { title: 'Manage Customers', message }) %>
 
+<section class="page-intro">
+  <h2>Customer Records</h2>
+  <p>Create, update, and remove customer profiles using form-driven workflows.</p>
+</section>
+
 <section class="card">
   <h2>Create Customer</h2>
   <form method="POST" action="/manage/customers" class="grid form-grid">
@@ -25,6 +30,9 @@
     <table>
       <thead><tr><th>ID</th><th>Legal ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Registration</th><th>Update</th><th>Delete</th></tr></thead>
       <tbody>
+        <% if (customers.length === 0) { %>
+          <tr><td colspan="8" class="data-empty">No customer records found.</td></tr>
+        <% } %>
         <% customers.forEach(c => { %>
           <tr>
             <td><%= c.customer_id %></td>

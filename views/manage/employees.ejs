@@ -1,5 +1,10 @@
 <%- include('../partials/header', { title: 'Manage Employees', message }) %>
 
+<section class="page-intro">
+  <h2>Employee Records</h2>
+  <p>Maintain employee profiles, role assignments, and hotel affiliations.</p>
+</section>
+
 <section class="card">
   <h2>Create Employee</h2>
   <form method="POST" action="/manage/employees" class="grid form-grid">
@@ -34,6 +39,9 @@
     <table>
       <thead><tr><th>ID</th><th>Legal ID</th><th>Name</th><th>Hotel</th><th>Role</th><th>Manager</th><th>Update</th><th>Delete</th></tr></thead>
       <tbody>
+        <% if (employees.length === 0) { %>
+          <tr><td colspan="8" class="data-empty">No employee records found.</td></tr>
+        <% } %>
         <% employees.forEach(e => { %>
           <tr>
             <td><%= e.employee_id %></td>

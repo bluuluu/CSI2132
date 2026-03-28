@@ -8,17 +8,25 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>eHotels - CSI2132 Deliverable 2</h1>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/search">Customer Search</a>
-      <a href="/employee">Employee Panel</a>
-      <a href="/views">SQL Views</a>
-      <a href="/manage/customers">Customers CRUD</a>
-      <a href="/manage/employees">Employees CRUD</a>
-      <a href="/manage/hotels">Hotels CRUD</a>
-      <a href="/manage/rooms">Rooms CRUD</a>
-    </nav>
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <div class="brand-block">
+          <h1>eHotels - CSI2132 Deliverable 2</h1>
+          <p>Operational UI for booking, renting, payments, and admin data workflows.</p>
+        </div>
+        <div class="badge-pill">No SQL Needed in UI</div>
+      </div>
+      <nav>
+        <a href="/" data-nav>Home</a>
+        <a href="/search" data-nav>Customer Search</a>
+        <a href="/employee" data-nav>Employee Panel</a>
+        <a href="/views" data-nav>SQL Views</a>
+        <a href="/manage/customers" data-nav>Customers CRUD</a>
+        <a href="/manage/employees" data-nav>Employees CRUD</a>
+        <a href="/manage/hotels" data-nav>Hotels CRUD</a>
+        <a href="/manage/rooms" data-nav>Rooms CRUD</a>
+      </nav>
+    </div>
   </header>
   <main class="container">
     <% if (message) { %>

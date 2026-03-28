@@ -1,11 +1,19 @@
 <%- include('partials/header', { title: 'SQL Views', message }) %>
 
+<section class="page-intro">
+  <h2>Database View Snapshots</h2>
+  <p>Live read-only outputs from the two required SQL views in Deliverable 2.</p>
+</section>
+
 <section class="card">
   <h2>View 1: Available Rooms Per Area</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Area</th><th>Available Rooms</th></tr></thead>
       <tbody>
+        <% if (byArea.length === 0) { %>
+          <tr><td colspan="2" class="data-empty">No area data found.</td></tr>
+        <% } %>
         <% byArea.forEach(r => { %>
           <tr><td><%= r.area %></td><td><%= r.available_rooms %></td></tr>
         <% }) %>
@@ -20,6 +28,9 @@
     <table>
       <thead><tr><th>Hotel ID</th><th>Hotel Name</th><th>City</th><th>Aggregated Capacity</th></tr></thead>
       <tbody>
+        <% if (byHotel.length === 0) { %>
+          <tr><td colspan="4" class="data-empty">No hotel aggregate data found.</td></tr>
+        <% } %>
         <% byHotel.forEach(r => { %>
           <tr>
             <td><%= r.hotel_id %></td>

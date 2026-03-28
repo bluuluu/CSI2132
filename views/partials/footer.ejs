@@ -1,3 +1,26 @@
   </main>
+  <script>
+    (function () {
+      const pathname = window.location.pathname;
+      document.querySelectorAll('a[data-nav]').forEach((link) => {
+        const href = link.getAttribute('href');
+        const active = href === '/'
+          ? pathname === '/'
+          : pathname === href || pathname.startsWith(href + '/');
+        if (active) {
+          link.classList.add('active');
+          link.setAttribute('aria-current', 'page');
+        }
+      });
+
+      document.querySelectorAll('form[action*=\"?_method=DELETE\"]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+          if (!window.confirm('Delete this record? This cannot be undone.')) {
+            event.preventDefault();
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

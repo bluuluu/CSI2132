@@ -1,5 +1,10 @@
 <%- include('partials/header', { title: 'Employee Panel', message }) %>
 
+<section class="page-intro">
+  <h2>Front Desk Operations</h2>
+  <p>Handle check-ins, walk-in rentings, and payment recording from one operational screen.</p>
+</section>
+
 <section class="card">
   <h2>Transform Booking to Renting (Check-in)</h2>
   <form method="POST" action="/employee/rentings/from-booking" class="grid form-grid">
@@ -65,6 +70,9 @@
     <table>
       <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
       <tbody>
+      <% if (activeBookings.length === 0) { %>
+        <tr><td colspan="6" class="data-empty">No active bookings to display.</td></tr>
+      <% } %>
       <% activeBookings.forEach(b => { %>
         <tr>
           <td><%= b.booking_id %></td>
@@ -72,7 +80,7 @@
           <td><%= b.customer_id %></td>
           <td><%= b.start_date.toISOString().slice(0,10) %></td>
           <td><%= b.end_date.toISOString().slice(0,10) %></td>
-          <td><%= b.status %></td>
+          <td><span class="status-badge status-<%= b.status.replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
         </tr>
       <% }) %>
       </tbody>
@@ -81,11 +89,14 @@
 </section>
 
 <section class="card">
-  <h2>Current/Recent Rentings</h2>
+  <h2>Current / Recent Rentings</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Employee</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
       <tbody>
+      <% if (activeRentings.length === 0) { %>
+        <tr><td colspan="8" class="data-empty">No rentings found.</td></tr>
+      <% } %>
       <% activeRentings.forEach(r => { %>
         <tr>
           <td><%= r.renting_id %></td>
@@ -94,12 +105,12 @@
           <td><%= r.employee_id %></td>
           <td><%= r.start_date.toISOString().slice(0,10) %></td>
           <td><%= r.end_date.toISOString().slice(0,10) %></td>
-          <td><%= r.status %></td>
+          <td><span class="status-badge status-<%= r.status.replace(/[^a-z_]/g, '_') %>"><%= r.status %></span></td>
           <td>
             <% if (r.status === 'active') { %>
-            <form method="POST" action="/employee/rentings/<%= r.renting_id %>/complete?_method=PATCH">
-              <button type="submit">Complete</button>
-            </form>
+              <form method="POST" action="/employee/rentings/<%= r.renting_id %>/complete?_method=PATCH">
+                <button type="submit">Complete</button>
+              </form>
             <% } %>
           </td>
         </tr>
