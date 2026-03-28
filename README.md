@@ -49,6 +49,32 @@ npm run dev
 ```
 Open: `http://localhost:3000`
 
+## Public Link Deployment (GitHub Pages Alternative)
+
+This project cannot be hosted on **GitHub Pages** directly because it requires:
+- a Node.js server (Express)
+- a PostgreSQL database
+
+GitHub Pages only hosts static files.
+
+For a public URL with full functionality, deploy on **Render** (or Railway/Fly.io).
+
+### One-click Render deploy
+
+1. Push this repository to GitHub (including `render.yaml`).
+2. In Render, choose **New + -> Blueprint** and select your repo.
+3. Render will create:
+   - web service: `csi2132-ehotels`
+   - PostgreSQL database: `csi2132-ehotels-db`
+4. Wait for first deploy to finish.
+
+The app is configured to auto-initialize the database on first boot with:
+- `AUTO_INIT_DB=true`
+- `DATABASE_URL` from Render database
+- `DB_SSL=true`
+
+After deploy, open the Render service URL (your shareable link).
+
 ## What is Implemented
 
 - Room search with multi-criteria filters:

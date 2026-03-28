@@ -1,6 +1,7 @@
 const express = require('express');
 const methodOverride = require('method-override');
 const db = require('./db');
+const { initializeDatabaseIfNeeded } = require('./db-init');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -675,6 +676,16 @@ app.use((req, res) => {
   res.status(404).send('Page not found');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+async function startServer() {
+  try {
+    await initializeDatabaseIfNeeded();
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
