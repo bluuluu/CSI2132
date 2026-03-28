@@ -6,6 +6,11 @@ This repository contains a full Deliverable 2 implementation for the CSI2132 eHo
 - EJS templates
 - HTML/CSS
 
+## Live App
+
+Open the deployed web app here:  
+[https://csi2132-ehotels.onrender.com/](https://csi2132-ehotels.onrender.com/)
+
 ## Project Structure
 
 - `sql/schema.sql`: Full DDL, constraints, triggers, indexes, and required views.
