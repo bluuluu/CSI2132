@@ -87,27 +87,7 @@ Open:
 
 Keep this terminal running while using the app.
 
-## Quick Troubleshooting
 
-- `zsh: command not found: sql`
-  Use `psql`, not `sql`.
-
-- `connection to server ... /tmp/.s.PGSQL.5432 failed`
-  PostgreSQL is not running. Start it first (`brew services start postgresql@15`).
-
-- `role "postgres" does not exist`
-  Set `DB_USER` in `.env` to your actual local PostgreSQL role and rerun.
-
-- App starts but pages fail
-  Usually DB credentials or DB initialization issue. Re-run step 4.
-
-- Port `3000` already in use
-  Change `PORT` in `.env` (for example `3001`) and open that port in browser.
-
-## Optional: Deploy for a Public Link
-
-This app cannot be hosted on GitHub Pages (it is server-side + database-backed).  
-If you need a public URL, deploy on Render/Railway/Fly.io instead.
 
 ## What is Implemented
 
