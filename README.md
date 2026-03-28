@@ -18,62 +18,96 @@ This repository contains a full Deliverable 2 implementation for the CSI2132 eHo
 - `report/deliverable2_report.md`: Deliverable 2 report content.
 - `report/video_timestamps_template.md`: Template for Table 1 timestamps.
 
-## Setup
+## Run Locally
 
-1. Install dependencies:
+Follow these steps in order from the project root.
+
+### 1) Install dependencies
+
 ```bash
 npm install
 ```
 
-2. Configure environment:
+### 2) Start PostgreSQL
+
+Make sure PostgreSQL is running before loading SQL or starting the app.
+
+Example (macOS + Homebrew):
+
+```bash
+brew services start postgresql@15
+pg_isready -h localhost -p 5432
+```
+
+If `pg_isready` says `accepting connections`, you are good.
+
+### 3) Configure environment
+
+Create `.env`:
+
 ```bash
 cp .env.example .env
 ```
-Then edit `.env` with your PostgreSQL credentials.
 
-3. Create database (example):
-```sql
-CREATE DATABASE ehotels;
+Then edit `.env`.
+
+For a typical local Homebrew setup:
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ehotels
+DB_USER=<your_local_postgres_role>
+DB_PASSWORD=
+PORT=3000
 ```
 
-4. Run SQL scripts in order:
+Notes:
+- `DB_USER` is often your macOS username (for example `luuluu2`) if no `postgres` role exists.
+- Leave `DB_PASSWORD` empty if your local role has no password.
+
+### 4) Create and load the database
+
 ```bash
-psql -U postgres -d ehotels -f sql/schema.sql
-psql -U postgres -d ehotels -f sql/seed.sql
-psql -U postgres -d ehotels -f sql/queries.sql
+createdb ehotels
+psql -d ehotels -f sql/schema.sql
+psql -d ehotels -f sql/seed.sql
+psql -d ehotels -f sql/queries.sql
 ```
 
-5. Start application:
+### 5) Run the web app
+
 ```bash
 npm run dev
 ```
-Open: `http://localhost:3000`
 
-## Public Link Deployment (GitHub Pages Alternative)
+Open:
 
-This project cannot be hosted on **GitHub Pages** directly because it requires:
-- a Node.js server (Express)
-- a PostgreSQL database
+`http://localhost:3000`
 
-GitHub Pages only hosts static files.
+Keep this terminal running while using the app.
 
-For a public URL with full functionality, deploy on **Render** (or Railway/Fly.io).
+## Quick Troubleshooting
 
-### One-click Render deploy
+- `zsh: command not found: sql`
+  Use `psql`, not `sql`.
 
-1. Push this repository to GitHub (including `render.yaml`).
-2. In Render, choose **New + -> Blueprint** and select your repo.
-3. Render will create:
-   - web service: `csi2132-ehotels`
-   - PostgreSQL database: `csi2132-ehotels-db`
-4. Wait for first deploy to finish.
+- `connection to server ... /tmp/.s.PGSQL.5432 failed`
+  PostgreSQL is not running. Start it first (`brew services start postgresql@15`).
 
-The app is configured to auto-initialize the database on first boot with:
-- `AUTO_INIT_DB=true`
-- `DATABASE_URL` from Render database
-- `DB_SSL=true`
+- `role "postgres" does not exist`
+  Set `DB_USER` in `.env` to your actual local PostgreSQL role and rerun.
 
-After deploy, open the Render service URL (your shareable link).
+- App starts but pages fail
+  Usually DB credentials or DB initialization issue. Re-run step 4.
+
+- Port `3000` already in use
+  Change `PORT` in `.env` (for example `3001`) and open that port in browser.
+
+## Optional: Deploy for a Public Link
+
+This app cannot be hosted on GitHub Pages (it is server-side + database-backed).  
+If you need a public URL, deploy on Render/Railway/Fly.io instead.
 
 ## What is Implemented
 
