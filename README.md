@@ -67,9 +67,6 @@ DB_PASSWORD=
 PORT=3000
 ```
 
-Notes:
-- `DB_USER` is often your macOS username (for example `luuluu2`) if no `postgres` role exists.
-- Leave `DB_PASSWORD` empty if your local role has no password.
 
 ### 4) Create and load the database
 
