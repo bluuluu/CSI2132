@@ -1,30 +1,88 @@
 <%- include('partials/header', { title: 'Home', message }) %>
 
 <section class="page-intro">
-  <h2>Operations Dashboard</h2>
-  <p>Use the tabs above to run customer booking, employee renting, and full CRUD administration workflows.</p>
+  <% if (!auth.isAuthenticated) { %>
+    <h2>eHotels Portal</h2>
+    <p>Browse available rooms publicly, then sign in as customer, employee, manager, or admin for role-specific actions.</p>
+  <% } else if (auth.role === 'customer') { %>
+    <h2>Customer Booking Portal</h2>
+    <p>Search for rooms with filters, then place bookings from your customer account.</p>
+  <% } else if (auth.role === 'employee') { %>
+    <h2>Employee Operations Dashboard</h2>
+    <p>Run check-ins, direct rentings, and payment operations.</p>
+  <% } else if (auth.role === 'manager') { %>
+    <h2>Manager Operations Dashboard</h2>
+    <p>Oversee desk operations, inspect SQL views, and manage customer records.</p>
+  <% } else { %>
+    <h2>Admin Operations Dashboard</h2>
+    <p>Full system control across bookings, rentings, SQL views, and all CRUD maintenance pages.</p>
+  <% } %>
 </section>
 
+<% const showPeopleCounts = !auth.isAuthenticated || ['manager', 'admin'].includes(auth.role); %>
 <section class="grid stats">
   <article class="stat-tile"><h3>Hotels</h3><p><%= counts.hotels %></p></article>
   <article class="stat-tile"><h3>Rooms</h3><p><%= counts.rooms %></p></article>
-  <article class="stat-tile"><h3>Customers</h3><p><%= counts.customers %></p></article>
-  <article class="stat-tile"><h3>Employees</h3><p><%= counts.employees %></p></article>
+  <% if (showPeopleCounts) { %>
+    <article class="stat-tile"><h3>Customers</h3><p><%= counts.customers %></p></article>
+    <article class="stat-tile"><h3>Employees</h3><p><%= counts.employees %></p></article>
+  <% } %>
 </section>
 
 <section class="card">
-  <h2>Deliverable 2 Coverage</h2>
-  <ul>
-    <li>Customer search with all required filters and booking flow</li>
-    <li>Employee actions: direct renting, booking-to-renting, and payment entry</li>
-    <li>Insert / update / delete for customers, employees, hotels, and rooms</li>
-    <li>SQL views page for both required project views</li>
-  </ul>
+  <h2>Deliverable 2 Coverage by Role</h2>
+  <% if (!auth.isAuthenticated) { %>
+    <ul>
+      <li>Public room/hotel availability browsing from the search page</li>
+      <li>Booking, renting, and management actions require authentication</li>
+      <li>Separate login pages for customer, employee, manager, and admin</li>
+    </ul>
+  <% } else if (auth.role === 'customer') { %>
+    <ul>
+      <li>Room search and booking flow with filter-driven availability</li>
+      <li>Customer settings for self profile updates and self account disable</li>
+      <li>No access to employee workflows, SQL views, or administrative CRUD pages</li>
+      <li>Role-specific customer portal</li>
+    </ul>
+  <% } else if (auth.role === 'employee') { %>
+    <ul>
+      <li>Booking-to-renting transformation and direct renting insertion</li>
+      <li>Payment insertion and operational desk actions</li>
+      <li>No SQL views or customer/hotel/room/employee CRUD access</li>
+    </ul>
+  <% } else if (auth.role === 'manager') { %>
+    <ul>
+      <li>All employee desk operations (check-ins, rentings, payments)</li>
+      <li>Can create/update/enable/disable employee accounts</li>
+      <li>Cannot manage manager accounts or admin-only customers/hotels/rooms CRUD</li>
+    </ul>
+  <% } else { %>
+    <ul>
+      <li>All customer, employee, and manager workflows</li>
+      <li>Full CRUD for customers, employees, hotels, and rooms</li>
+      <li>SQL views and complete administration surface</li>
+    </ul>
+  <% } %>
   <div class="quick-links">
-    <a href="/search"><strong>Start Customer Search</strong><br />Filter room availability and create bookings.</a>
-    <a href="/employee"><strong>Open Employee Panel</strong><br />Transform bookings, create rentings, record payments.</a>
-    <a href="/views"><strong>Inspect SQL Views</strong><br />See available rooms per area and hotel capacity aggregate.</a>
-    <a href="/manage/rooms"><strong>Manage Room Records</strong><br />Maintain room inventory and current status.</a>
+    <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations.</a>
+    <% if (!auth.isAuthenticated) { %>
+      <a href="/login"><strong>Choose a Login Portal</strong><br />Use role-based login to access protected actions.</a>
+    <% } %>
+    <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
+      <a href="/employee"><strong>Open Employee Panel</strong><br />Handle check-ins, rentings, and payments.</a>
+    <% } %>
+    <% if (['manager', 'admin'].includes(auth.role)) { %>
+      <a href="/manage/employees"><strong>Manage Staff Accounts</strong><br />Create/update/enable/disable employee and manager logins.</a>
+      <a href="/views"><strong>Inspect SQL Views</strong><br />Available rooms by area and hotel capacity rollups.</a>
+    <% } %>
+    <% if (auth.role === 'customer') { %>
+      <a href="/settings/customer"><strong>Open My Settings</strong><br />Update profile info and account login details.</a>
+    <% } %>
+    <% if (auth.role === 'admin') { %>
+      <a href="/manage/customers"><strong>Manage Customers</strong><br />Create and update customer profiles.</a>
+      <a href="/manage/rooms"><strong>Manage Rooms</strong><br />Maintain room inventory and status.</a>
+      <a href="/manage/hotels"><strong>Manage Hotels</strong><br />Maintain hotel metadata and chain links.</a>
+    <% } %>
   </div>
 </section>
 

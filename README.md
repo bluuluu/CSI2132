@@ -89,19 +89,70 @@ Open:
 
 Keep this terminal running while using the app.
 
+## Role-Based Login
+
+The app now uses separate login pages per role:
+
+- `/login/customer`
+- `/login/employee`
+- `/login/manager`
+- `/login/admin`
+
+You can also start from `/login` and choose a role card.
+
+### Login Info
+
+- Admin: `admin` / `admin123`
+- Manager accounts (seeded): `manager<ID>` / `manager<ID>123`  
+  Example: `manager1` / `manager1123`
+- Employee accounts (seeded): `employee<ID>` / `employee<ID>123`  
+  Example: `employee2` / `employee2123`
+- Customer accounts (seeded): `customer<ID>` / `customer<ID>123`  
+  Example: `customer1` / `customer1123`
+
+### Access Differences
+
+- Public (not signed in):
+  - Can browse available rooms/hotels in `/search`
+  - Cannot create bookings, rentings, payments, or management actions
+- Customer:
+  - Can search/filter rooms and create bookings for their own customer account
+  - Can open `/settings/customer` to update profile/login info
+  - Can disable their own account (reactivation requires an employee/admin)
+  - Cannot access employee, manager, or admin management pages
+- Employee:
+  - Can access employee panel (booking -> renting, direct renting, payments)
+  - Can reactivate disabled customer accounts
+  - Can book for valid customer IDs from `/search`
+  - Cannot manage staff accounts, SQL views, or admin CRUD pages
+- Manager:
+  - Includes all employee capabilities
+  - Can create/update/enable/disable employee accounts (no employee deletion)
+  - Cannot create or disable manager accounts
+  - Can access SQL views
+- Admin:
+  - Full access to all workflows
+  - Can create customers, employees, and managers
+  - Can enable/disable both employee and manager accounts
+  - Can manage hotels/rooms/customers and SQL views
+
 
 
 ## What is Implemented
 
 - Room search with multi-criteria filters:
   - dates, room capacity, area, hotel chain, category, total rooms, and price
-- Booking creation flow
+- Public room/hotel browsing with authenticated booking flow
+- Role-based login with separated customer/employee/manager/admin portals and permission controls
+- DB-backed login accounts (`auth_account`) for admin, manager, employee, and customer
 - Employee panel:
   - booking -> renting transformation
   - direct renting creation
   - payment insertion
-- Full CRUD pages:
-  - customers, employees, hotels, rooms
+- customer account reactivation by employee/manager/admin
+- Staff account management with enable/disable workflows (no destructive staff deletion)
+- Customer self-settings (profile update + self-disable)
+- Admin CRUD pages for customers, hotels, and rooms
 - Required SQL Views displayed in UI
 - Triggers for overlap prevention, room status synchronization, and archiving
 - Indexes for common filter/query paths

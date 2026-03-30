@@ -13,16 +13,27 @@
         <% chains.forEach(c => { %><option value="<%= c.chain_id %>"><%= c.chain_name %></option><% }) %>
       </select>
     </label>
-    <label>Name <input name="hotel_name" required /></label>
+    <label>Name <input name="hotel_name" maxlength="140" required /></label>
     <label>Category <input type="number" min="1" max="5" name="category" required /></label>
     <label>Total Rooms <input type="number" min="1" name="total_rooms" required /></label>
-    <label>Address <input name="address_line" required /></label>
-    <label>City <input name="city" required /></label>
-    <label>State/Province <input name="state_province" required /></label>
-    <label>Country <input name="country" required /></label>
-    <label>Postal Code <input name="postal_code" required /></label>
-    <label>Email <input type="email" name="contact_email" required /></label>
-    <label>Phone <input name="contact_phone" required /></label>
+    <label>Address <input name="address_line" maxlength="255" required /></label>
+    <label>City <input name="city" maxlength="100" required /></label>
+    <label>State/Province <input name="state_province" maxlength="100" required /></label>
+    <label>Country <input name="country" maxlength="80" required /></label>
+    <label>Postal Code <input name="postal_code" maxlength="20" required /></label>
+    <label>Email <input type="email" name="contact_email" maxlength="120" required /></label>
+    <label>Phone
+      <input
+        name="contact_phone"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{10}"
+        minlength="10"
+        maxlength="10"
+        title="Phone must contain exactly 10 digits."
+        required
+      />
+    </label>
     <div class="actions"><button type="submit">Create</button></div>
   </form>
 </section>
@@ -51,16 +62,26 @@
                   <option value="<%= c.chain_id %>" <%= c.chain_id === h.chain_id ? 'selected' : '' %>><%= c.chain_name %></option>
                 <% }) %>
               </select>
-              <input name="hotel_name" value="<%= h.hotel_name %>" required />
+              <input name="hotel_name" value="<%= h.hotel_name %>" maxlength="140" required />
               <input type="number" min="1" max="5" name="category" value="<%= h.category %>" required />
               <input type="number" min="1" name="total_rooms" value="<%= h.total_rooms %>" required />
-              <input name="address_line" value="<%= h.address_line %>" required />
-              <input name="city" value="<%= h.city %>" required />
-              <input name="state_province" value="<%= h.state_province %>" required />
-              <input name="country" value="<%= h.country %>" required />
-              <input name="postal_code" value="<%= h.postal_code %>" required />
-              <input type="email" name="contact_email" value="<%= h.contact_email %>" required />
-              <input name="contact_phone" value="<%= h.contact_phone %>" required />
+              <input name="address_line" value="<%= h.address_line %>" maxlength="255" required />
+              <input name="city" value="<%= h.city %>" maxlength="100" required />
+              <input name="state_province" value="<%= h.state_province %>" maxlength="100" required />
+              <input name="country" value="<%= h.country %>" maxlength="80" required />
+              <input name="postal_code" value="<%= h.postal_code %>" maxlength="20" required />
+              <input type="email" name="contact_email" value="<%= h.contact_email %>" maxlength="120" required />
+              <input
+                name="contact_phone"
+                value="<%= String(h.contact_phone || '').replace(/\\D/g, '').slice(0, 10) %>"
+                type="tel"
+                inputmode="numeric"
+                pattern="\d{10}"
+                minlength="10"
+                maxlength="10"
+                title="Phone must contain exactly 10 digits."
+                required
+              />
               <button type="submit">Save</button>
             </form>
           </td>

@@ -9,22 +9,51 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand-row">
-        <div class="brand-block">
-          <h1>eHotels - CSI2132 Deliverable 2</h1>
-          <p>Operational UI for booking, renting, payments, and admin data workflows.</p>
-        </div>
+      <% const isAuthenticated = auth && auth.isAuthenticated; %>
+      <% const role = isAuthenticated ? auth.role : null; %>
+      <div class="header-shell">
+        <a href="/" class="brand-link" aria-label="eHotels Home">
+          <span class="brand-mark">E</span>
+          <span class="brand-name">eHotels</span>
+        </a>
+
+        <nav class="main-nav">
+          <% if (isAuthenticated) { %>
+            <a href="/" data-nav>Home</a>
+            <a href="/search" data-nav>Browse Rooms</a>
+            <% if (['employee', 'manager', 'admin'].includes(role)) { %>
+              <a href="/employee" data-nav>Employee Panel</a>
+            <% } %>
+            <% if (role === 'customer') { %>
+              <a href="/settings/customer" data-nav>My Settings</a>
+            <% } %>
+            <% if (['manager', 'admin'].includes(role)) { %>
+              <a href="/manage/employees" data-nav>Staff Accounts</a>
+              <a href="/views" data-nav>SQL Views</a>
+            <% } %>
+            <% if (role === 'admin') { %>
+              <a href="/manage/customers" data-nav>Customers</a>
+              <a href="/manage/hotels" data-nav>Hotels CRUD</a>
+              <a href="/manage/rooms" data-nav>Rooms CRUD</a>
+            <% } %>
+          <% } else { %>
+            <a href="/search" data-nav>Browse Rooms</a>
+            <a href="/login" data-nav>Login</a>
+          <% } %>
+        </nav>
+
+        <% if (isAuthenticated) { %>
+          <div class="header-actions">
+            <div class="session-badges">
+              <span class="badge-pill role-pill"><%= role.toUpperCase() %></span>
+              <span class="badge-pill"><%= auth.displayName %></span>
+            </div>
+            <form method="POST" action="/logout" class="logout-form">
+              <button type="submit" class="btn-secondary header-logout">Log Out</button>
+            </form>
+          </div>
+        <% } %>
       </div>
-      <nav>
-        <a href="/" data-nav>Home</a>
-        <a href="/search" data-nav>Customer Search</a>
-        <a href="/employee" data-nav>Employee Panel</a>
-        <a href="/views" data-nav>SQL Views</a>
-        <a href="/manage/customers" data-nav>Customers CRUD</a>
-        <a href="/manage/employees" data-nav>Employees CRUD</a>
-        <a href="/manage/hotels" data-nav>Hotels CRUD</a>
-        <a href="/manage/rooms" data-nav>Rooms CRUD</a>
-      </nav>
     </div>
   </header>
   <main class="container">

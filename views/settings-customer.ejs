@@ -1,0 +1,44 @@
+<%- include('partials/header', { title: 'Customer Settings', message }) %>
+
+<section class="page-intro">
+  <h2>Customer Settings</h2>
+  <p>Update your profile and login details. If you disable your account, an employee must reactivate it.</p>
+</section>
+
+<section class="card">
+  <h2>Update Profile</h2>
+  <form method="POST" action="/settings/customer/profile?_method=PATCH" class="grid form-grid">
+    <label>First Name <input name="first_name" value="<%= profile.first_name %>" maxlength="80" required /></label>
+    <label>Last Name <input name="last_name" value="<%= profile.last_name %>" maxlength="80" required /></label>
+    <label>Email <input type="email" name="email" value="<%= profile.email %>" maxlength="120" required /></label>
+    <label>Phone
+      <input
+        name="phone"
+        value="<%= String(profile.phone || '').replace(/\D/g, '').slice(0, 10) %>"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{10}"
+        minlength="10"
+        maxlength="10"
+        title="Phone must contain exactly 10 digits."
+        required
+      />
+    </label>
+    <label>Address <input name="address_line" value="<%= profile.address_line %>" maxlength="255" required /></label>
+    <label>Username <input name="username" value="<%= profile.username %>" maxlength="60" pattern="[a-z0-9._-]{3,60}" required /></label>
+    <label>New Password (Optional)
+      <input type="password" name="password" minlength="6" maxlength="120" placeholder="Leave blank to keep current password" />
+    </label>
+    <div class="actions"><button type="submit">Save Changes</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Account Status</h2>
+  <p class="muted">Disabling your account signs you out immediately. To return, contact an employee for reactivation.</p>
+  <form method="POST" action="/settings/customer/deactivate?_method=PATCH">
+    <button type="submit" class="danger">Disable My Account</button>
+  </form>
+</section>
+
+<%- include('partials/footer') %>

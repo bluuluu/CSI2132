@@ -1,24 +1,36 @@
-<%- include('../partials/header', { title: 'Manage Employees', message }) %>
+<%- include('../partials/header', { title: 'Manage Staff Accounts', message }) %>
+<% const managerMode = auth.role === 'manager'; %>
 
 <section class="page-intro">
-  <h2>Employee Records</h2>
-  <p>Maintain employee profiles, role assignments, and hotel affiliations.</p>
+  <h2>Staff Accounts</h2>
+  <p>Create and maintain employee and manager accounts. Former staff should be disabled, not deleted.</p>
 </section>
 
 <section class="card">
-  <h2>Create Employee</h2>
+  <h2>Create Staff Member</h2>
   <form method="POST" action="/manage/employees" class="grid form-grid">
-    <label>Legal ID <input name="legal_id" required /></label>
+    <label>Legal ID <input name="legal_id" maxlength="30" required /></label>
     <label>ID Type
       <select name="id_type" required>
         <% ['SIN','SSN','DL','PASSPORT'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
       </select>
     </label>
-    <label>First Name <input name="first_name" required /></label>
-    <label>Last Name <input name="last_name" required /></label>
-    <label>Email <input type="email" name="email" required /></label>
-    <label>Phone <input name="phone" required /></label>
-    <label>Address <input name="address_line" required /></label>
+    <label>First Name <input name="first_name" maxlength="80" required /></label>
+    <label>Last Name <input name="last_name" maxlength="80" required /></label>
+    <label>Email <input type="email" name="email" maxlength="120" required /></label>
+    <label>Phone
+      <input
+        name="phone"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{10}"
+        minlength="10"
+        maxlength="10"
+        title="Phone must contain exactly 10 digits."
+        required
+      />
+    </label>
+    <label>Address <input name="address_line" maxlength="255" required /></label>
     <label>Hotel
       <select name="hotel_id" required>
         <% hotels.forEach(h => { %>
@@ -26,51 +38,104 @@
         <% }) %>
       </select>
     </label>
-    <label>Role <input name="role_title" required /></label>
+    <label>Role Title <input name="role_title" maxlength="80" required /></label>
     <label>Hired On <input type="date" name="hired_on" required /></label>
-    <label class="checkline"><input type="checkbox" name="is_manager" /> Manager</label>
+    <% if (canManageManagers) { %>
+      <label>Account Role
+        <select name="account_role" required>
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+        </select>
+      </label>
+    <% } else { %>
+      <input type="hidden" name="account_role" value="employee" />
+    <% } %>
+    <label>Username <input name="username" maxlength="60" pattern="[a-z0-9._-]{3,60}" required /></label>
+    <label>Password <input type="password" name="password" minlength="6" maxlength="120" required /></label>
     <div class="actions"><button type="submit">Create</button></div>
   </form>
 </section>
 
 <section class="card">
-  <h2>Employees</h2>
+  <h2>Existing Staff</h2>
+  <% if (managerMode) { %>
+    <p class="muted">Manager access is limited to employee accounts only.</p>
+  <% } %>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Legal ID</th><th>Name</th><th>Hotel</th><th>Role</th><th>Manager</th><th>Update</th><th>Delete</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Hotel</th>
+          <th>Role Title</th>
+          <th>Account Role</th>
+          <th>Username</th>
+          <th>Status</th>
+          <th>Update</th>
+          <th>Enable/Disable</th>
+        </tr>
+      </thead>
       <tbody>
         <% if (employees.length === 0) { %>
-          <tr><td colspan="8" class="data-empty">No employee records found.</td></tr>
+          <tr><td colspan="9" class="data-empty">No staff records found.</td></tr>
         <% } %>
         <% employees.forEach(e => { %>
           <tr>
             <td><%= e.employee_id %></td>
-            <td><%= e.legal_id %></td>
             <td><%= e.first_name %> <%= e.last_name %></td>
-            <td><%= e.hotel_id %></td>
+            <td><%= e.hotel_name %></td>
             <td><%= e.role_title %></td>
-            <td><%= e.is_manager ? 'Yes' : 'No' %></td>
+            <td><%= e.account_role %></td>
+            <td><%= e.username %></td>
+            <td>
+              <span class="status-badge <%= e.is_active ? 'status-active' : 'status-cancelled' %>">
+                <%= e.is_active ? 'active' : 'inactive' %>
+              </span>
+            </td>
             <td>
               <form method="POST" action="/manage/employees/<%= e.employee_id %>?_method=PATCH" class="inline-form stack-small">
-                <input name="first_name" value="<%= e.first_name %>" required />
-                <input name="last_name" value="<%= e.last_name %>" required />
-                <input type="email" name="email" value="<%= e.email %>" required />
-                <input name="phone" value="<%= e.phone %>" required />
-                <input name="address_line" value="<%= e.address_line %>" required />
+                <input name="first_name" value="<%= e.first_name %>" maxlength="80" required />
+                <input name="last_name" value="<%= e.last_name %>" maxlength="80" required />
+                <input type="email" name="email" value="<%= e.email %>" maxlength="120" required />
+                <input
+                  name="phone"
+                  value="<%= String(e.phone || '').replace(/\D/g, '').slice(0, 10) %>"
+                  type="tel"
+                  inputmode="numeric"
+                  pattern="\d{10}"
+                  minlength="10"
+                  maxlength="10"
+                  title="Phone must contain exactly 10 digits."
+                  required
+                />
+                <input name="address_line" value="<%= e.address_line %>" maxlength="255" required />
                 <select name="hotel_id" required>
                   <% hotels.forEach(h => { %>
                     <option value="<%= h.hotel_id %>" <%= h.hotel_id === e.hotel_id ? 'selected' : '' %>>#<%= h.hotel_id %> <%= h.hotel_name %></option>
                   <% }) %>
                 </select>
-                <input name="role_title" value="<%= e.role_title %>" required />
+                <input name="role_title" value="<%= e.role_title %>" maxlength="80" required />
                 <input type="date" name="hired_on" value="<%= e.hired_on.toISOString().slice(0,10) %>" required />
-                <label class="checkline"><input type="checkbox" name="is_manager" <%= e.is_manager ? 'checked' : '' %> /> Manager</label>
+                <% if (canManageManagers) { %>
+                  <select name="account_role" required>
+                    <option value="employee" <%= e.account_role === 'employee' ? 'selected' : '' %>>Employee</option>
+                    <option value="manager" <%= e.account_role === 'manager' ? 'selected' : '' %>>Manager</option>
+                  </select>
+                <% } else { %>
+                  <input type="hidden" name="account_role" value="employee" />
+                <% } %>
+                <input name="username" value="<%= e.username %>" maxlength="60" pattern="[a-z0-9._-]{3,60}" required />
+                <input type="password" name="password" minlength="6" maxlength="120" placeholder="Leave blank to keep password" />
                 <button type="submit">Save</button>
               </form>
             </td>
             <td>
-              <form method="POST" action="/manage/employees/<%= e.employee_id %>?_method=DELETE">
-                <button type="submit" class="danger">Delete</button>
+              <form method="POST" action="/manage/employees/<%= e.employee_id %>/account-status?_method=PATCH">
+                <input type="hidden" name="is_active" value="<%= e.is_active ? 'false' : 'true' %>" />
+                <button type="submit" class="<%= e.is_active ? 'danger' : '' %>">
+                  <%= e.is_active ? 'Disable' : 'Enable' %>
+                </button>
               </form>
             </td>
           </tr>

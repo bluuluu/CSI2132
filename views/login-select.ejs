@@ -1,0 +1,34 @@
+<%- include('partials/header', { title: 'Choose Login Role', message }) %>
+
+<section class="page-intro">
+  <h2>Select Your Portal</h2>
+  <p>Use separate login pages for each role. Permissions are enforced server-side.</p>
+</section>
+
+<section class="grid role-grid">
+  <article class="card role-card">
+    <h3>Customer Portal</h3>
+    <p>Book rooms with filter-based availability and customer-safe access controls.</p>
+    <a href="/login/customer" class="btn-secondary block-btn">Go to Customer Login</a>
+  </article>
+
+  <article class="card role-card">
+    <h3>Employee Portal</h3>
+    <p>Manage check-ins, direct rentings, and payments for front desk operations.</p>
+    <a href="/login/employee" class="btn-secondary block-btn">Go to Employee Login</a>
+  </article>
+
+  <article class="card role-card">
+    <h3>Manager Portal</h3>
+    <p>Everything employees can do, plus staff account management for employee accounts.</p>
+    <a href="/login/manager" class="btn-secondary block-btn">Go to Manager Login</a>
+  </article>
+
+  <article class="card role-card">
+    <h3>Admin Portal</h3>
+    <p>Full access to all workflows, including hotel, room, employee, and customer CRUD.</p>
+    <a href="/login/admin" class="btn-secondary block-btn">Go to Admin Login</a>
+  </article>
+</section>
+
+<%- include('partials/footer') %>

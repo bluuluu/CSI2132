@@ -1,4 +1,5 @@
 <%- include('partials/header', { title: 'Employee Panel', message }) %>
+<% const adminNeedsEmployeeId = auth.role === 'admin'; %>
 
 <section class="page-intro">
   <h2>Front Desk Operations</h2>
@@ -9,7 +10,11 @@
   <h2>Transform Booking to Renting (Check-in)</h2>
   <form method="POST" action="/employee/rentings/from-booking" class="grid form-grid">
     <label>Booking ID <input type="number" name="booking_id" min="1" required /></label>
-    <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <% if (adminNeedsEmployeeId) { %>
+      <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <% } else { %>
+      <span class="inline-note">Using signed-in employee ID.</span>
+    <% } %>
     <div class="actions"><button type="submit">Transform</button></div>
   </form>
 </section>
@@ -33,14 +38,18 @@
         <% }) %>
       </select>
     </label>
-    <label>Employee
-      <select name="employee_id" required>
-        <option value="">Choose</option>
-        <% employees.forEach(e => { %>
-          <option value="<%= e.employee_id %>">#<%= e.employee_id %> <%= e.first_name %> <%= e.last_name %></option>
-        <% }) %>
-      </select>
-    </label>
+    <% if (adminNeedsEmployeeId) { %>
+      <label>Employee
+        <select name="employee_id" required>
+          <option value="">Choose</option>
+          <% employees.forEach(e => { %>
+            <option value="<%= e.employee_id %>">#<%= e.employee_id %> <%= e.first_name %> <%= e.last_name %></option>
+          <% }) %>
+        </select>
+      </label>
+    <% } else { %>
+      <span class="inline-note">Using signed-in employee ID.</span>
+    <% } %>
     <label>Start Date <input type="date" name="start_date" required /></label>
     <label>End Date <input type="date" name="end_date" required /></label>
     <div class="actions"><button type="submit">Create Renting</button></div>
@@ -51,7 +60,11 @@
   <h2>Insert Payment</h2>
   <form method="POST" action="/employee/payments" class="grid form-grid">
     <label>Renting ID <input type="number" name="renting_id" min="1" required /></label>
-    <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <% if (adminNeedsEmployeeId) { %>
+      <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
+    <% } else { %>
+      <span class="inline-note">Using signed-in employee ID.</span>
+    <% } %>
     <label>Amount <input type="number" name="amount" step="0.01" min="0.01" required /></label>
     <label>Method
       <select name="method" required>
@@ -62,6 +75,32 @@
     </label>
     <div class="actions"><button type="submit">Record Payment</button></div>
   </form>
+</section>
+
+<section class="card">
+  <h2>Reactivate Disabled Customer Accounts</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Customer ID</th><th>Name</th><th>Username</th><th>Action</th></tr></thead>
+      <tbody>
+        <% if (disabledCustomerAccounts.length === 0) { %>
+          <tr><td colspan="4" class="data-empty">No disabled customer accounts.</td></tr>
+        <% } %>
+        <% disabledCustomerAccounts.forEach(c => { %>
+          <tr>
+            <td><%= c.customer_id %></td>
+            <td><%= c.first_name %> <%= c.last_name %></td>
+            <td><%= c.username %></td>
+            <td>
+              <form method="POST" action="/employee/customers/<%= c.customer_id %>/reactivate?_method=PATCH">
+                <button type="submit">Reactivate</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <section class="card">

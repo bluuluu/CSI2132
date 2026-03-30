@@ -1,0 +1,20 @@
+<%- include('partials/header', { title, message }) %>
+
+<section class="page-intro">
+  <h2><%= roleLabel %> Login</h2>
+  <p>This role has a dedicated sign-in page and role-specific navigation after login.</p>
+</section>
+
+<section class="card">
+  <h3>Sign In</h3>
+  <form method="POST" action="/login/<%= role %>" class="grid form-grid">
+    <label>Username <input name="username" required autocomplete="username" /></label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password" /></label>
+    <div class="actions">
+      <button type="submit">Login as <%= roleLabel %></button>
+      <a href="/login" class="btn-secondary">Choose Another Role</a>
+    </div>
+  </form>
+</section>
+
+<%- include('partials/footer') %>

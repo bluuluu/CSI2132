@@ -1,8 +1,8 @@
 <%- include('partials/header', { title: 'Customer Search', message }) %>
 
 <section class="page-intro">
-  <h2>Find and Book Available Rooms</h2>
-  <p>Adjust any criteria below. Filters auto-apply after changes, and you can still click Search manually.</p>
+  <h2>Room Search and Booking</h2>
+  <p>Anyone can browse room availability. Booking actions require a signed-in customer or staff account.</p>
 </section>
 
 <section class="card">
@@ -78,19 +78,30 @@
             <td>$<%= room.base_price %></td>
             <td><%= room.amenities %></td>
             <td>
-              <form method="POST" action="/bookings" class="inline-form">
-                <input type="hidden" name="room_id" value="<%= room.room_id %>" />
-                <select name="customer_id" required>
-                  <option value="">Customer</option>
-                  <% customers.forEach(c => { %>
-                    <option value="<%= c.customer_id %>">#<%= c.customer_id %> <%= c.first_name %> <%= c.last_name %></option>
-                  <% }) %>
-                </select>
-                <input type="number" name="employee_id" placeholder="Emp ID (optional)" min="1" />
-                <input type="date" name="start_date" value="<%= filters.start_date || '' %>" required />
-                <input type="date" name="end_date" value="<%= filters.end_date || '' %>" required />
-                <button type="submit">Book</button>
-              </form>
+              <% if (canBook) { %>
+                <form method="POST" action="/bookings" class="inline-form">
+                  <input type="hidden" name="room_id" value="<%= room.room_id %>" />
+                  <% if (auth.role === 'customer') { %>
+                    <input type="hidden" name="customer_id" value="<%= auth.customerId %>" />
+                    <span class="inline-note">Customer #<%= auth.customerId %></span>
+                  <% } else { %>
+                    <select name="customer_id" required>
+                      <option value="">Valid customer ID</option>
+                      <% customers.forEach(c => { %>
+                        <option value="<%= c.customer_id %>">#<%= c.customer_id %> <%= c.first_name %> <%= c.last_name %></option>
+                      <% }) %>
+                    </select>
+                    <% if (auth.role === 'admin') { %>
+                      <input type="number" name="employee_id" placeholder="Employee ID" min="1" />
+                    <% } %>
+                  <% } %>
+                  <input type="date" name="start_date" value="<%= filters.start_date || '' %>" required />
+                  <input type="date" name="end_date" value="<%= filters.end_date || '' %>" required />
+                  <button type="submit">Book</button>
+                </form>
+              <% } else { %>
+                <a href="/login" class="btn-secondary">Sign in to book</a>
+              <% } %>
             </td>
           </tr>
         <% }) %>

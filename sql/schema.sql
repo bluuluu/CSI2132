@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS archive CASCADE;
 DROP TABLE IF EXISTS renting CASCADE;
 DROP TABLE IF EXISTS booking CASCADE;
 DROP TABLE IF EXISTS room CASCADE;
+DROP TABLE IF EXISTS auth_account CASCADE;
 DROP TABLE IF EXISTS employee CASCADE;
 DROP TABLE IF EXISTS customer CASCADE;
 DROP TABLE IF EXISTS person CASCADE;
@@ -64,6 +65,22 @@ CREATE TABLE employee (
   role_title VARCHAR(80) NOT NULL,
   hired_on DATE NOT NULL DEFAULT CURRENT_DATE,
   is_manager BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE auth_account (
+  account_id SERIAL PRIMARY KEY,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'employee', 'customer')),
+  username VARCHAR(60) NOT NULL UNIQUE,
+  password_plain VARCHAR(120) NOT NULL,
+  employee_id INT UNIQUE REFERENCES employee(employee_id) ON DELETE CASCADE,
+  customer_id INT UNIQUE REFERENCES customer(customer_id) ON DELETE CASCADE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CHECK (
+    (role = 'admin' AND employee_id IS NULL AND customer_id IS NULL)
+    OR (role IN ('manager', 'employee') AND employee_id IS NOT NULL AND customer_id IS NULL)
+    OR (role = 'customer' AND customer_id IS NOT NULL AND employee_id IS NULL)
+  )
 );
 
 CREATE TABLE room (
@@ -362,6 +379,7 @@ CREATE INDEX idx_room_capacity_price_status ON room(capacity, base_price, curren
 CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, city, total_rooms);
 CREATE INDEX idx_booking_room_dates ON booking(room_id, start_date, end_date);
 CREATE INDEX idx_renting_room_dates ON renting(room_id, start_date, end_date);
+CREATE INDEX idx_auth_account_role_active ON auth_account(role, is_active);
 
 CREATE OR REPLACE VIEW v_available_rooms_per_area AS
 SELECT

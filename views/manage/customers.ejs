@@ -1,25 +1,39 @@
 <%- include('../partials/header', { title: 'Manage Customers', message }) %>
+<% const canDeleteCustomers = auth.role === 'admin'; %>
 
 <section class="page-intro">
   <h2>Customer Records</h2>
-  <p>Create, update, and remove customer profiles using form-driven workflows.</p>
+  <p>Create and update customer profiles, with login credentials and account status controls.</p>
 </section>
 
 <section class="card">
   <h2>Create Customer</h2>
   <form method="POST" action="/manage/customers" class="grid form-grid">
-    <label>Legal ID <input name="legal_id" required /></label>
+    <label>Legal ID <input name="legal_id" maxlength="30" required /></label>
     <label>ID Type
       <select name="id_type" required>
         <% ['SIN','SSN','DL','PASSPORT'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
       </select>
     </label>
-    <label>First Name <input name="first_name" required /></label>
-    <label>Last Name <input name="last_name" required /></label>
-    <label>Email <input type="email" name="email" required /></label>
-    <label>Phone <input name="phone" required /></label>
-    <label>Address <input name="address_line" required /></label>
+    <label>First Name <input name="first_name" maxlength="80" required /></label>
+    <label>Last Name <input name="last_name" maxlength="80" required /></label>
+    <label>Email <input type="email" name="email" maxlength="120" required /></label>
+    <label>Phone
+      <input
+        name="phone"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{10}"
+        minlength="10"
+        maxlength="10"
+        title="Phone must contain exactly 10 digits."
+        required
+      />
+    </label>
+    <label>Address <input name="address_line" maxlength="255" required /></label>
     <label>Registration Date <input type="date" name="registration_date" required /></label>
+    <label>Username <input name="username" maxlength="60" pattern="[a-z0-9._-]{3,60}" required /></label>
+    <label>Password <input type="password" name="password" minlength="6" maxlength="120" required /></label>
     <div class="actions"><button type="submit">Create</button></div>
   </form>
 </section>
@@ -28,10 +42,15 @@
   <h2>Customers</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Legal ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Registration</th><th>Update</th><th>Delete</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ID</th><th>Legal ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Username</th><th>Status</th><th>Registration</th><th>Update</th><th>Status Action</th>
+          <% if (canDeleteCustomers) { %><th>Delete</th><% } %>
+        </tr>
+      </thead>
       <tbody>
         <% if (customers.length === 0) { %>
-          <tr><td colspan="8" class="data-empty">No customer records found.</td></tr>
+          <tr><td colspan="<%= canDeleteCustomers ? 11 : 10 %>" class="data-empty">No customer records found.</td></tr>
         <% } %>
         <% customers.forEach(c => { %>
           <tr>
@@ -40,23 +59,49 @@
             <td><%= c.first_name %> <%= c.last_name %></td>
             <td><%= c.email %></td>
             <td><%= c.phone %></td>
+            <td><%= c.username || '-' %></td>
+            <td>
+              <span class="status-badge <%= c.is_active ? 'status-active' : 'status-cancelled' %>">
+                <%= c.is_active ? 'active' : 'inactive' %>
+              </span>
+            </td>
             <td><%= c.registration_date.toISOString().slice(0,10) %></td>
             <td>
               <form method="POST" action="/manage/customers/<%= c.customer_id %>?_method=PATCH" class="inline-form stack-small">
-                <input name="first_name" value="<%= c.first_name %>" required />
-                <input name="last_name" value="<%= c.last_name %>" required />
-                <input type="email" name="email" value="<%= c.email %>" required />
-                <input name="phone" value="<%= c.phone %>" required />
-                <input name="address_line" value="<%= c.address_line %>" required />
+                <input name="first_name" value="<%= c.first_name %>" maxlength="80" required />
+                <input name="last_name" value="<%= c.last_name %>" maxlength="80" required />
+                <input type="email" name="email" value="<%= c.email %>" maxlength="120" required />
+                <input
+                  name="phone"
+                  value="<%= String(c.phone || '').replace(/\\D/g, '').slice(0, 10) %>"
+                  type="tel"
+                  inputmode="numeric"
+                  pattern="\d{10}"
+                  minlength="10"
+                  maxlength="10"
+                  title="Phone must contain exactly 10 digits."
+                  required
+                />
+                <input name="address_line" value="<%= c.address_line %>" maxlength="255" required />
                 <input type="date" name="registration_date" value="<%= c.registration_date.toISOString().slice(0,10) %>" required />
                 <button type="submit">Save</button>
               </form>
             </td>
             <td>
-              <form method="POST" action="/manage/customers/<%= c.customer_id %>?_method=DELETE">
-                <button type="submit" class="danger">Delete</button>
+              <form method="POST" action="/manage/customers/<%= c.customer_id %>/account-status?_method=PATCH">
+                <input type="hidden" name="is_active" value="<%= c.is_active ? 'false' : 'true' %>" />
+                <button type="submit" class="<%= c.is_active ? 'danger' : '' %>">
+                  <%= c.is_active ? 'Disable' : 'Enable' %>
+                </button>
               </form>
             </td>
+            <% if (canDeleteCustomers) { %>
+              <td>
+                <form method="POST" action="/manage/customers/<%= c.customer_id %>?_method=DELETE">
+                  <button type="submit" class="danger">Delete</button>
+                </form>
+              </td>
+            <% } %>
           </tr>
         <% }) %>
       </tbody>

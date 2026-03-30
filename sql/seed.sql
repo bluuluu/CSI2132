@@ -110,6 +110,37 @@ SELECT
   (rn % 2 = 1)
 FROM emp_people;
 
+INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
+VALUES ('admin', 'admin', 'admin123', NULL, NULL, TRUE);
+
+INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
+SELECT
+  CASE WHEN e.is_manager THEN 'manager' ELSE 'employee' END AS role,
+  CASE
+    WHEN e.is_manager THEN 'manager' || e.employee_id
+    ELSE 'employee' || e.employee_id
+  END AS username,
+  CASE
+    WHEN e.is_manager THEN 'manager' || e.employee_id || '123'
+    ELSE 'employee' || e.employee_id || '123'
+  END AS password_plain,
+  e.employee_id,
+  NULL,
+  TRUE
+FROM employee e
+ORDER BY e.employee_id;
+
+INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
+SELECT
+  'customer',
+  'customer' || c.customer_id,
+  'customer' || c.customer_id || '123',
+  NULL,
+  c.customer_id,
+  TRUE
+FROM customer c
+ORDER BY c.customer_id;
+
 INSERT INTO booking (room_id, customer_id, created_by_employee_id, start_date, end_date, status)
 SELECT
   g AS room_id,
