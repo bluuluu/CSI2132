@@ -1,0 +1,61 @@
+<%- include('partials/header', { title: 'Customer Sign Up', message }) %>
+
+<section class="page-intro">
+  <h2>Create Customer Account</h2>
+  <p>Sign up to book rooms online. Your account and profile details are stored in the database.</p>
+</section>
+
+<section class="card">
+  <h3>Sign Up</h3>
+  <form method="POST" action="/signup/customer" class="grid form-grid">
+    <label>First Name <input name="first_name" maxlength="80" required /></label>
+    <label>Last Name <input name="last_name" maxlength="80" required /></label>
+    <label>SIN
+      <input
+        name="legal_id"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{9}"
+        minlength="9"
+        maxlength="9"
+        placeholder="111111111"
+        title="SIN must contain exactly 9 digits."
+        required
+      />
+    </label>
+    <label>ID Type
+      <input value="SIN" readonly />
+      <input type="hidden" name="id_type" value="SIN" />
+    </label>
+    <label>Email <input type="email" name="email" maxlength="120" required /></label>
+    <label>Phone
+      <input
+        name="phone"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{10}"
+        minlength="10"
+        maxlength="10"
+        title="Phone must contain exactly 10 digits."
+        required
+      />
+    </label>
+    <label>Address <input name="address_line" maxlength="255" required /></label>
+    <label>Username
+      <input
+        name="username"
+        maxlength="60"
+        pattern="[a-z0-9._-]{3,60}"
+        title="3-60 chars: letters, numbers, ., _, -"
+        required
+      />
+    </label>
+    <label>Password <input type="password" name="password" minlength="6" maxlength="120" required /></label>
+    <div class="actions">
+      <button type="submit">Create Account</button>
+      <a href="/login/customer" class="btn-secondary">Back to Customer Login</a>
+    </div>
+  </form>
+</section>
+
+<%- include('partials/footer') %>

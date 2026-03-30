@@ -1,19 +1,33 @@
 <%- include('../partials/header', { title: 'Manage Staff Accounts', message }) %>
-<% const managerMode = auth.role === 'manager'; %>
 
 <section class="page-intro">
   <h2>Staff Accounts</h2>
-  <p>Create and maintain employee and manager accounts. Former staff should be disabled, not deleted.</p>
+  <% if (canManageManagers) { %>
+    <p>Create and maintain employee and manager accounts. Former staff should be disabled, not deleted.</p>
+  <% } else { %>
+    <p>Create and maintain employee accounts for your hotel. Former staff should be disabled, not deleted.</p>
+  <% } %>
 </section>
 
 <section class="card">
   <h2>Create Staff Member</h2>
   <form method="POST" action="/manage/employees" class="grid form-grid">
-    <label>Legal ID <input name="legal_id" maxlength="30" required /></label>
+    <label>SIN
+      <input
+        name="legal_id"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{9}"
+        minlength="9"
+        maxlength="9"
+        placeholder="111111111"
+        title="SIN must contain exactly 9 digits."
+        required
+      />
+    </label>
     <label>ID Type
-      <select name="id_type" required>
-        <% ['SIN','SSN','DL','PASSPORT'].forEach(t => { %><option value="<%= t %>"><%= t %></option><% }) %>
-      </select>
+      <input value="SIN" readonly />
+      <input type="hidden" name="id_type" value="SIN" />
     </label>
     <label>First Name <input name="first_name" maxlength="80" required /></label>
     <label>Last Name <input name="last_name" maxlength="80" required /></label>
@@ -58,9 +72,6 @@
 
 <section class="card">
   <h2>Existing Staff</h2>
-  <% if (managerMode) { %>
-    <p class="muted">Manager access is limited to employee accounts only.</p>
-  <% } %>
   <div class="table-wrap">
     <table>
       <thead>

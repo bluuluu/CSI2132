@@ -1,0 +1,75 @@
+<%- include('partials/header', { title: 'My Bookings', message }) %>
+
+<section class="page-intro">
+  <h2>My Bookings and Rentings</h2>
+  <p>Track your reservations and see when a booking has been converted into an active renting at check-in.</p>
+</section>
+
+<section class="card">
+  <h2>My Bookings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Booking ID</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Booking Status</th><th>Linked Renting</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!bookings || bookings.length === 0) { %>
+          <tr><td colspan="8" class="data-empty">You have no bookings yet.</td></tr>
+        <% } %>
+        <% (bookings || []).forEach(b => { %>
+          <tr>
+            <td><%= b.booking_id %></td>
+            <td><%= b.hotel_name %></td>
+            <td><%= b.city %></td>
+            <td>#<%= b.room_id %> (<%= b.room_number %>)</td>
+            <td><%= b.start_date.toISOString().slice(0,10) %></td>
+            <td><%= b.end_date.toISOString().slice(0,10) %></td>
+            <td><span class="status-badge status-<%= String(b.status || '').replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
+            <td>
+              <% if (b.linked_renting_id) { %>
+                #<%= b.linked_renting_id %>
+                <span class="status-badge status-<%= String(b.linked_renting_status || '').replace(/[^a-z_]/g, '_') %>"><%= b.linked_renting_status %></span>
+              <% } else { %>
+                <span class="muted">Not checked in yet</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>My Rentings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Renting ID</th><th>Source Booking</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!rentings || rentings.length === 0) { %>
+          <tr><td colspan="8" class="data-empty">No rentings found for this customer account.</td></tr>
+        <% } %>
+        <% (rentings || []).forEach(r => { %>
+          <tr>
+            <td><%= r.renting_id %></td>
+            <td><%= r.source_booking_id ? ('#' + r.source_booking_id) : 'Walk-in / direct' %></td>
+            <td><%= r.hotel_name %></td>
+            <td><%= r.city %></td>
+            <td>#<%= r.room_id %> (<%= r.room_number %>)</td>
+            <td><%= r.start_date.toISOString().slice(0,10) %></td>
+            <td><%= r.end_date.toISOString().slice(0,10) %></td>
+            <td><span class="status-badge status-<%= String(r.status || '').replace(/[^a-z_]/g, '_') %>"><%= r.status %></span></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

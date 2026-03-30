@@ -324,6 +324,12 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(47, 143, 79, 0.2);
 }
 
+.field-invalid {
+  border-color: #c43f34 !important;
+  background: #fff4f3 !important;
+  box-shadow: 0 0 0 3px rgba(196, 63, 52, 0.16) !important;
+}
+
 .actions {
   display: flex;
   align-items: flex-end;

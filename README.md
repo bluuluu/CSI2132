@@ -91,12 +91,12 @@ Keep this terminal running while using the app.
 
 ## Role-Based Login
 
-The app now uses separate login pages per role:
+The app now uses separate login pages for customer, staff, and admin:
 
 - `/login/customer`
 - `/login/employee`
-- `/login/manager`
 - `/login/admin`
+- `/signup/customer` (new customer registration)
 
 You can also start from `/login` and choose a role card.
 
@@ -104,11 +104,23 @@ You can also start from `/login` and choose a role card.
 
 - Admin: `admin` / `admin123`
 - Manager accounts (seeded): `manager<ID>` / `manager<ID>123`  
-  Example: `manager1` / `manager1123`
+  Example: `manager1` / `manager1123`  
+  Use the staff login page: `/login/employee`
 - Employee accounts (seeded): `employee<ID>` / `employee<ID>123`  
   Example: `employee2` / `employee2123`
 - Customer accounts (seeded): `customer<ID>` / `customer<ID>123`  
   Example: `customer1` / `customer1123`
+
+### Customer Sign Up
+
+- Guests can create a customer account from `/signup/customer`.
+- Required signup data is validated server-side:
+  - `username` (3-60, lowercase letters/numbers/`._-`)
+  - `password` (6-120 chars)
+  - first/last name, SIN (9 digits, example `111111111`), ID type (`SIN` only), email, 10-digit phone, address
+- Duplicate `username`, `email`, or `legal ID` is rejected with a friendly error.
+- Values like `EMP39203` are legal ID values in demo data, not ID types.
+- Invalid inputs show browser validation messages and invalid fields are highlighted in red.
 
 ### Access Differences
 
@@ -127,9 +139,10 @@ You can also start from `/login` and choose a role card.
   - Cannot manage staff accounts, SQL views, or admin CRUD pages
 - Manager:
   - Includes all employee capabilities
-  - Can create/update/enable/disable employee accounts (no employee deletion)
-  - Cannot create or disable manager accounts
-  - Can access SQL views
+  - Can view employees assigned to the same hotel
+  - Can create new employee accounts for the same hotel
+  - Can enable/disable employee accounts for the same hotel
+  - Cannot access admin-only CRUD or SQL views
 - Admin:
   - Full access to all workflows
   - Can create customers, employees, and managers
@@ -150,7 +163,7 @@ You can also start from `/login` and choose a role card.
   - direct renting creation
   - payment insertion
 - customer account reactivation by employee/manager/admin
-- Staff account management with enable/disable workflows (no destructive staff deletion)
+- Admin staff account management with enable/disable workflows (no destructive staff deletion)
 - Customer self-settings (profile update + self-disable)
 - Admin CRUD pages for customers, hotels, and rooms
 - Required SQL Views displayed in UI

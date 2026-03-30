@@ -2,17 +2,21 @@ BEGIN;
 
 INSERT INTO hotel_chain (chain_name, central_office_address, contact_email, contact_phone)
 VALUES
-  ('Aurora Stays', '120 King St W, Toronto, ON', 'contact@aurorastays.com', '+1-416-555-1001'),
-  ('NorthPeak Hospitality', '330 Burrard St, Vancouver, BC', 'info@northpeak.com', '+1-604-555-2001'),
-  ('Maple Crest Hotels', '900 Rene-Levesque Blvd, Montreal, QC', 'hello@maplecrest.com', '+1-514-555-3001'),
-  ('Harborline Suites', '50 Causeway St, Boston, MA', 'support@harborline.com', '+1-617-555-4001'),
-  ('Frontier Lodge Group', '410 W Georgia St, Seattle, WA', 'desk@frontierlodge.com', '+1-206-555-5001');
+  ('Cedar Key Hotels', '145 Wellington St W, Toronto, ON', 'ops@cedarkeyhotels.com', '4165558101'),
+  ('Summit Harbor Group', '455 Burrard St, Vancouver, BC', 'contact@summitharbor.com', '6045558201'),
+  ('Northern Bloom Inns', '700 Rene-Levesque Blvd, Montreal, QC', 'service@northernbloom.com', '5145558301'),
+  ('Blue Ridge Stays', '25 Atlantic Ave, Boston, MA', 'desk@blueridgestays.com', '6175558401'),
+  ('Lakeside Horizon', '520 Pike St, Seattle, WA', 'help@lakesidehorizon.com', '2065558501');
 
 WITH cities AS (
   SELECT ARRAY[
     'Toronto','Ottawa','Montreal','Vancouver','Calgary','Edmonton','Winnipeg',
     'Halifax','Boston','New York','Chicago','Seattle','San Francisco','Los Angeles'
-  ] AS c
+  ] AS c,
+  ARRAY[
+    'Cedar Point','Harbor View','Skyline Court','Maple Arc','North Gate',
+    'Aurora Bay','Elm Grove','Riverlight','Summit Crest','Pine Terrace'
+  ] AS n
 )
 INSERT INTO hotel (
   chain_id, hotel_name, category, total_rooms, address_line, city, state_province, country,
@@ -20,10 +24,10 @@ INSERT INTO hotel (
 )
 SELECT
   ((g - 1) / 8) + 1 AS chain_id,
-  'Hotel ' || g AS hotel_name,
+  (SELECT n[((g - 1) % array_length(n, 1)) + 1] FROM cities) || ' Hotel ' || g AS hotel_name,
   ((g - 1) % 5) + 1 AS category,
-  20 + (g % 11) AS total_rooms,
-  (100 + g) || ' Main Avenue' AS address_line,
+  24 + (g % 14) AS total_rooms,
+  (120 + g) || ' Market Street' AS address_line,
   (SELECT c[((g - 1) % array_length(c, 1)) + 1] FROM cities) AS city,
   CASE
     WHEN g % 2 = 0 THEN 'ON'
@@ -32,9 +36,9 @@ SELECT
     ELSE 'USA'
   END AS state_province,
   CASE WHEN g % 4 = 0 THEN 'USA' ELSE 'Canada' END AS country,
-  'A' || lpad((1000 + g)::text, 4, '0') AS postal_code,
-  'hotel' || g || '@ehotelsdemo.com' AS contact_email,
-  '+1-555-' || lpad((2000 + g)::text, 4, '0') AS contact_phone
+  'H' || lpad((2000 + g)::text, 4, '0') AS postal_code,
+  'frontdesk' || g || '@demo-ehotels.com' AS contact_email,
+  '5557' || lpad(g::text, 6, '0') AS contact_phone
 FROM generate_series(1, 40) AS g;
 
 INSERT INTO room (
@@ -69,43 +73,43 @@ CROSS JOIN generate_series(1, 5) AS seq;
 
 INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
 SELECT
-  'CUST' || lpad(g::text, 5, '0'),
-  CASE WHEN g % 2 = 0 THEN 'SIN' ELSE 'SSN' END,
-  'CustomerFirst' || g,
-  'CustomerLast' || g,
-  'customer' || g || '@mail.com',
-  '+1-613-' || lpad((3000 + g)::text, 4, '0'),
-  (10 + g) || ' Customer Road'
+  lpad((200000000 + g)::text, 9, '0'),
+  'SIN',
+  (ARRAY['Maya','Noah','Liam','Olivia','Ethan','Sophia','Lucas','Ava','Mila','Leo'])[((g - 1) % 10) + 1],
+  (ARRAY['Patel','Nguyen','Martin','Singh','Brown','Lopez','Khan','Wilson','Carter','Dubois'])[((g - 1) % 10) + 1] || g,
+  'guest' || g || '@staymail.com',
+  '6138' || lpad(g::text, 6, '0'),
+  (40 + g) || ' Willow Crescent'
 FROM generate_series(1, 120) AS g;
 
 INSERT INTO customer (person_id, registration_date)
 SELECT person_id, CURRENT_DATE - ((person_id % 400) || ' days')::interval
 FROM person
-WHERE legal_id LIKE 'CUST%';
+WHERE email LIKE 'guest%@staymail.com';
 
 INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
 SELECT
-  'EMP' || lpad(g::text, 5, '0'),
-  CASE WHEN g % 2 = 0 THEN 'SIN' ELSE 'SSN' END,
-  'EmployeeFirst' || g,
-  'EmployeeLast' || g,
-  'employee' || g || '@mail.com',
-  '+1-343-' || lpad((4000 + g)::text, 4, '0'),
-  (20 + g) || ' Employee Street'
+  lpad((700000000 + g)::text, 9, '0'),
+  'SIN',
+  (ARRAY['Amir','Chloe','Jordan','Ariana','Victor','Nina','Daniel','Ella','Marco','Riya'])[((g - 1) % 10) + 1],
+  (ARRAY['Adams','Bennett','Clark','Diaz','Edwards','Fischer','Gray','Hughes','Iqbal','Jacobs'])[((g - 1) % 10) + 1] || g,
+  'team' || g || '@workmail.com',
+  '3439' || lpad(g::text, 6, '0'),
+  (80 + g) || ' Lakeview Drive'
 FROM generate_series(1, 80) AS g;
 
 WITH emp_people AS (
   SELECT
     person_id,
-    row_number() OVER (ORDER BY legal_id) AS rn
+    row_number() OVER (ORDER BY email) AS rn
   FROM person
-  WHERE legal_id LIKE 'EMP%'
+  WHERE email LIKE 'team%@workmail.com'
 )
 INSERT INTO employee (person_id, hotel_id, role_title, hired_on, is_manager)
 SELECT
   person_id,
   ((rn - 1) / 2) + 1 AS hotel_id,
-  CASE WHEN rn % 2 = 1 THEN 'Manager' ELSE 'Front Desk Agent' END,
+  CASE WHEN rn % 2 = 1 THEN 'Manager' ELSE 'Guest Services Agent' END,
   CURRENT_DATE - ((rn % 365) || ' days')::interval,
   (rn % 2 = 1)
 FROM emp_people;

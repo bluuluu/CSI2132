@@ -20,6 +20,43 @@
           }
         });
       });
+
+      const inputs = document.querySelectorAll('input, select, textarea');
+      const updateFieldValidity = (el) => {
+        if (!el || typeof el.checkValidity !== 'function' || el.disabled || el.readOnly) return;
+        if (el.checkValidity()) {
+          el.classList.remove('field-invalid');
+        } else {
+          el.classList.add('field-invalid');
+        }
+      };
+
+      inputs.forEach((el) => {
+        el.addEventListener('blur', () => updateFieldValidity(el));
+        el.addEventListener('input', () => {
+          if (el.classList.contains('field-invalid')) {
+            updateFieldValidity(el);
+          }
+        });
+        el.addEventListener('change', () => updateFieldValidity(el));
+      });
+
+      document.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+          let firstInvalid = null;
+          form.querySelectorAll('input, select, textarea').forEach((el) => {
+            updateFieldValidity(el);
+            if (!firstInvalid && el.classList.contains('field-invalid')) {
+              firstInvalid = el;
+            }
+          });
+          if (firstInvalid) {
+            event.preventDefault();
+            firstInvalid.focus();
+            form.reportValidity();
+          }
+        });
+      });
     })();
   </script>
 </body>

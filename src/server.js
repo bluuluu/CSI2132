@@ -21,11 +21,12 @@ const ROLE_LABELS = {
   employee: 'Employee',
   customer: 'Customer'
 };
+const LOGIN_ROLES = ['admin', 'employee', 'customer'];
 const ROLE_HOME = {
   admin: '/',
-  manager: '/employee',
-  employee: '/employee',
-  customer: '/search'
+  manager: '/',
+  employee: '/',
+  customer: '/'
 };
 
 function parseCookies(cookieHeader = '') {
@@ -84,6 +85,14 @@ function normalizePhone(value, fieldName = 'Phone') {
   const digitsOnly = String(value || '').replace(/\D/g, '');
   if (!/^\d{10}$/.test(digitsOnly)) {
     throw new Error(`${fieldName} must contain exactly 10 digits.`);
+  }
+  return digitsOnly;
+}
+
+function normalizeSin(value, fieldName = 'SIN') {
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  if (!/^\d{9}$/.test(digitsOnly)) {
+    throw new Error(`${fieldName} must contain exactly 9 digits (example: 111111111).`);
   }
   return digitsOnly;
 }
@@ -183,6 +192,21 @@ function buildMessage(query) {
   return { type: query.type || 'info', text: query.msg };
 }
 
+function formatConstraintViolation(err) {
+  if (!err || err.code !== '23505') return null;
+  const constraint = String(err.constraint || '');
+  if (constraint.includes('auth_account_username')) {
+    return 'Username is already taken.';
+  }
+  if (constraint.includes('person_email')) {
+    return 'Email is already registered.';
+  }
+  if (constraint.includes('person_legal_id')) {
+    return 'Legal ID is already registered.';
+  }
+  return 'An account with the same unique information already exists.';
+}
+
 function redirectWith(res, path, msg, type = 'info') {
   const separator = path.includes('?') ? '&' : '?';
   res.redirect(`${path}${separator}msg=${encodeURIComponent(msg)}&type=${encodeURIComponent(type)}`);
@@ -271,6 +295,35 @@ async function fetchAccountByRoleAndUsername(role, username) {
   return result.rows[0] || null;
 }
 
+async function fetchStaffAccountByUsername(username) {
+  const result = await db.query(
+    `SELECT
+       a.account_id,
+       a.role,
+       a.username,
+       a.password_plain,
+       a.is_active,
+       a.employee_id,
+       a.customer_id,
+       COALESCE(ep.person_id, cp.person_id) AS person_id,
+       COALESCE(
+         ep.first_name || ' ' || ep.last_name,
+         cp.first_name || ' ' || cp.last_name,
+         'Administrator'
+       ) AS display_name
+     FROM auth_account a
+     LEFT JOIN employee e ON e.employee_id = a.employee_id
+     LEFT JOIN person ep ON ep.person_id = e.person_id
+     LEFT JOIN customer c ON c.customer_id = a.customer_id
+     LEFT JOIN person cp ON cp.person_id = c.person_id
+     WHERE a.role IN ('employee', 'manager') AND lower(a.username) = lower($1)
+     LIMIT 1`,
+    [username]
+  );
+
+  return result.rows[0] || null;
+}
+
 function mapAccountToAuth(account) {
   return {
     isAuthenticated: true,
@@ -296,6 +349,20 @@ function assertCanManageStaffAccount(currentRole, targetRole) {
     return;
   }
   throw new Error('You do not have permission to manage this staff account.');
+}
+
+async function fetchManagerHotelId(employeeId) {
+  const result = await db.query(
+    `SELECT hotel_id
+     FROM employee
+     WHERE employee_id = $1
+     LIMIT 1`,
+    [employeeId]
+  );
+  if (result.rowCount === 0) {
+    throw new Error('Manager profile is not linked to a valid employee record.');
+  }
+  return result.rows[0].hotel_id;
 }
 
 async function ensureAuthSchemaAndSeed() {
@@ -391,33 +458,120 @@ app.get('/login', (req, res) => {
   });
 });
 
+app.get('/signup/customer', (req, res) => {
+  if (req.auth.isAuthenticated) {
+    return res.redirect(ROLE_HOME[req.auth.role] || '/');
+  }
+  return res.render('signup-customer', {
+    title: 'Customer Sign Up',
+    message: buildMessage(req.query)
+  });
+});
+
+app.post('/signup/customer', async (req, res) => {
+  const client = await db.getClient();
+  try {
+    if (req.auth.isAuthenticated) {
+      return res.redirect(ROLE_HOME[req.auth.role] || '/');
+    }
+
+    const {
+      legal_id,
+      id_type,
+      first_name,
+      last_name,
+      email,
+      phone,
+      address_line,
+      username,
+      password
+    } = req.body;
+
+    const normalizedLegalId = normalizeSin(legal_id, 'SIN');
+    const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
+    const normalizedFirstName = normalizeString(first_name, 'First name', 80);
+    const normalizedLastName = normalizeString(last_name, 'Last name', 80);
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = normalizePhone(phone);
+    const normalizedAddress = normalizeString(address_line, 'Address', 255);
+    const normalizedUsername = normalizeUsername(username);
+    const normalizedPassword = normalizePassword(password);
+
+    await client.query('BEGIN');
+    const person = await client.query(
+      `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING person_id`,
+      [
+        normalizedLegalId,
+        normalizedIdType,
+        normalizedFirstName,
+        normalizedLastName,
+        normalizedEmail,
+        normalizedPhone,
+        normalizedAddress
+      ]
+    );
+
+    const customer = await client.query(
+      `INSERT INTO customer (person_id, registration_date)
+       VALUES ($1, CURRENT_DATE)
+       RETURNING customer_id`,
+      [person.rows[0].person_id]
+    );
+
+    const account = await client.query(
+      `INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
+       VALUES ('customer', $1, $2, NULL, $3, TRUE)
+       RETURNING account_id`,
+      [normalizedUsername, normalizedPassword, customer.rows[0].customer_id]
+    );
+
+    await client.query('COMMIT');
+    setAuthCookie(res, account.rows[0].account_id);
+    return redirectWith(res, '/', 'Customer account created successfully.', 'success');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    const friendly = formatConstraintViolation(err);
+    return redirectWith(res, '/signup/customer', friendly || err.message, 'error');
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/login/:role', (req, res) => {
-  const role = req.params.role;
-  if (!VALID_ROLES.includes(role)) {
+  const role = req.params.role === 'manager' ? 'employee' : req.params.role;
+  if (!LOGIN_ROLES.includes(role)) {
     return res.status(404).send('Unknown login role');
   }
-  if (req.auth.isAuthenticated && req.auth.role === role) {
-    return res.redirect(ROLE_HOME[role] || '/');
+  if (req.auth.isAuthenticated) {
+    const staffLoginAlready = role === 'employee' && ['employee', 'manager'].includes(req.auth.role);
+    const sameRoleLogin = req.auth.role === role;
+    if (staffLoginAlready || sameRoleLogin) {
+      return res.redirect(ROLE_HOME[req.auth.role] || '/');
+    }
   }
   return res.render('login-role', {
-    title: `${ROLE_LABELS[role]} Login`,
+    title: `${role === 'employee' ? 'Employee / Manager' : ROLE_LABELS[role]} Login`,
     message: buildMessage(req.query),
     role,
-    roleLabel: ROLE_LABELS[role]
+    roleLabel: role === 'employee' ? 'Employee / Manager' : ROLE_LABELS[role]
   });
 });
 
 app.post('/login/:role', (req, res) => {
   (async () => {
-    const role = req.params.role;
-    if (!VALID_ROLES.includes(role)) {
+    const role = req.params.role === 'manager' ? 'employee' : req.params.role;
+    if (!LOGIN_ROLES.includes(role)) {
       return res.status(404).send('Unknown login role');
     }
 
     const username = normalizeUsername(req.body.username);
     const password = normalizePassword(req.body.password);
 
-    const account = await fetchAccountByRoleAndUsername(role, username);
+    const account = role === 'employee'
+      ? await fetchStaffAccountByUsername(username)
+      : await fetchAccountByRoleAndUsername(role, username);
     if (!account || account.password_plain !== password) {
       return redirectWith(res, `/login/${role}`, 'Invalid username or password.', 'error');
     }
@@ -427,9 +581,15 @@ app.post('/login/:role', (req, res) => {
     }
 
     setAuthCookie(res, account.account_id);
-    return redirectWith(res, ROLE_HOME[role] || '/', `Logged in as ${ROLE_LABELS[role]}.`, 'success');
+    return redirectWith(
+      res,
+      ROLE_HOME[account.role] || '/',
+      `Logged in as ${ROLE_LABELS[account.role]}.`,
+      'success'
+    );
   })().catch((err) => {
-    redirectWith(res, `/login/${req.params.role}`, err.message, 'error');
+    const fallbackRole = req.params.role === 'manager' ? 'employee' : req.params.role;
+    redirectWith(res, `/login/${fallbackRole}`, err.message, 'error');
   });
 });
 
@@ -440,21 +600,59 @@ app.post('/logout', (req, res) => {
 
 app.get('/', async (req, res) => {
   try {
-    const [hotels, rooms, customers, employees] = await Promise.all([
+    const [hotels, rooms] = await Promise.all([
       db.query('SELECT COUNT(*)::int AS count FROM hotel'),
-      db.query('SELECT COUNT(*)::int AS count FROM room'),
-      db.query('SELECT COUNT(*)::int AS count FROM customer'),
-      db.query('SELECT COUNT(*)::int AS count FROM employee')
+      db.query('SELECT COUNT(*)::int AS count FROM room')
     ]);
+
+    let customerCount = null;
+    let employeeCount = null;
+    let managerTeam = [];
+    let managerHotelName = null;
+
+    if (req.auth.role === 'admin') {
+      const [customers, employees] = await Promise.all([
+        db.query('SELECT COUNT(*)::int AS count FROM customer'),
+        db.query('SELECT COUNT(*)::int AS count FROM employee')
+      ]);
+      customerCount = customers.rows[0].count;
+      employeeCount = employees.rows[0].count;
+    }
+
+    if (req.auth.role === 'manager' && req.auth.employeeId) {
+      const managerHotel = await db.query(
+        `SELECT h.hotel_id, h.hotel_name
+         FROM employee e
+         JOIN hotel h ON h.hotel_id = e.hotel_id
+         WHERE e.employee_id = $1
+         LIMIT 1`,
+        [req.auth.employeeId]
+      );
+
+      if (managerHotel.rowCount > 0) {
+        managerHotelName = managerHotel.rows[0].hotel_name;
+        const team = await db.query(
+          `SELECT e.employee_id, p.first_name, p.last_name, e.role_title
+           FROM employee e
+           JOIN person p ON p.person_id = e.person_id
+           WHERE e.hotel_id = $1
+           ORDER BY p.last_name, p.first_name`,
+          [managerHotel.rows[0].hotel_id]
+        );
+        managerTeam = team.rows;
+      }
+    }
 
     res.render('index', {
       message: buildMessage(req.query),
       counts: {
         hotels: hotels.rows[0].count,
         rooms: rooms.rows[0].count,
-        customers: customers.rows[0].count,
-        employees: employees.rows[0].count
-      }
+        customers: customerCount,
+        employees: employeeCount
+      },
+      managerTeam,
+      managerHotelName
     });
   } catch (err) {
     res.status(500).send(err.message);
@@ -559,7 +757,7 @@ app.get('/search', async (req, res) => {
     let customers = { rows: [] };
     if (req.auth.role === 'customer') {
       customers = await db.query(
-        `SELECT c.customer_id, p.first_name, p.last_name, p.legal_id
+        `SELECT c.customer_id, p.first_name, p.last_name
          FROM customer c
          JOIN person p ON p.person_id = c.person_id
          JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
@@ -569,7 +767,7 @@ app.get('/search', async (req, res) => {
       );
     } else if (shouldLoadCustomerList) {
       customers = await db.query(
-        `SELECT c.customer_id, p.first_name, p.last_name, p.legal_id
+        `SELECT c.customer_id, p.first_name, p.last_name
          FROM customer c
          JOIN person p ON p.person_id = c.person_id
          JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
@@ -633,6 +831,64 @@ app.post('/bookings', requireRole(['customer', 'employee', 'manager', 'admin']),
     redirectWith(res, '/search', 'Booking created successfully.', 'success');
   } catch (err) {
     redirectWith(res, '/search', err.message, 'error');
+  }
+});
+
+app.get('/customer/bookings', requireRole(['customer']), async (req, res) => {
+  try {
+    const customerId = parsePositiveInt(req.auth.customerId, 'Customer');
+    const [bookings, rentings] = await Promise.all([
+      db.query(
+        `SELECT
+           b.booking_id,
+           b.room_id,
+           rm.room_number,
+           h.hotel_name,
+           h.city,
+           b.start_date,
+           b.end_date,
+           b.status,
+           b.created_at,
+           rt.renting_id AS linked_renting_id,
+           rt.status AS linked_renting_status
+         FROM booking b
+         JOIN room rm ON rm.room_id = b.room_id
+         JOIN hotel h ON h.hotel_id = rm.hotel_id
+         LEFT JOIN renting rt ON rt.source_booking_id = b.booking_id
+         WHERE b.customer_id = $1
+         ORDER BY b.created_at DESC, b.booking_id DESC
+         LIMIT 300`,
+        [customerId]
+      ),
+      db.query(
+        `SELECT
+           rt.renting_id,
+           rt.source_booking_id,
+           rt.room_id,
+           rm.room_number,
+           h.hotel_name,
+           h.city,
+           rt.start_date,
+           rt.end_date,
+           rt.status,
+           rt.created_at
+         FROM renting rt
+         JOIN room rm ON rm.room_id = rt.room_id
+         JOIN hotel h ON h.hotel_id = rm.hotel_id
+         WHERE rt.customer_id = $1
+         ORDER BY rt.created_at DESC, rt.renting_id DESC
+         LIMIT 300`,
+        [customerId]
+      )
+    ]);
+
+    res.render('customer-bookings', {
+      message: buildMessage(req.query),
+      bookings: bookings.rows,
+      rentings: rentings.rows
+    });
+  } catch (err) {
+    redirectWith(res, '/', err.message, 'error');
   }
 });
 
@@ -939,7 +1195,7 @@ app.post('/employee/payments', requireRole(['employee', 'manager', 'admin']), as
   }
 });
 
-app.get('/views', requireRole(['manager', 'admin']), async (req, res) => {
+app.get('/views', requireRole(['admin']), async (req, res) => {
   try {
     const [byArea, byHotel] = await Promise.all([
       db.query('SELECT * FROM v_available_rooms_per_area ORDER BY area'),
@@ -963,7 +1219,6 @@ app.get('/manage/customers', requireRole(['admin']), async (req, res) => {
          c.customer_id,
          c.registration_date,
          p.person_id,
-         p.legal_id,
          p.id_type,
          p.first_name,
          p.last_name,
@@ -999,8 +1254,8 @@ app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
       username,
       password
     } = req.body;
-    const normalizedLegalId = normalizeString(legal_id, 'Legal ID', 30);
-    const normalizedIdType = parseEnum(id_type, ['SIN', 'SSN', 'DL', 'PASSPORT'], 'ID type');
+    const normalizedLegalId = normalizeSin(legal_id, 'SIN');
+    const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
     const normalizedFirstName = normalizeString(first_name, 'First name', 80);
     const normalizedLastName = normalizeString(last_name, 'Last name', 80);
     const normalizedEmail = normalizeEmail(email);
@@ -1120,37 +1375,72 @@ app.delete('/manage/customers/:id', requireRole(['admin']), async (req, res) => 
 
 app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res) => {
   try {
-    const visibleRoles = req.auth.role === 'admin' ? ['employee', 'manager'] : ['employee'];
+    const isManager = req.auth.role === 'manager';
+    const managerHotelId = isManager ? await fetchManagerHotelId(req.auth.employeeId) : null;
+    const visibleRoles = isManager ? ['employee'] : ['employee', 'manager'];
+
+    const employeeQuery = isManager
+      ? db.query(
+          `SELECT
+             e.employee_id,
+             e.hotel_id,
+             h.hotel_name,
+             e.role_title,
+             e.hired_on,
+             p.person_id,
+             p.first_name,
+             p.last_name,
+             p.email,
+             p.phone,
+             p.address_line,
+             a.account_id,
+             a.role AS account_role,
+             a.username,
+             a.is_active
+           FROM employee e
+           JOIN person p ON p.person_id = e.person_id
+           JOIN hotel h ON h.hotel_id = e.hotel_id
+           JOIN auth_account a ON a.employee_id = e.employee_id
+           WHERE a.role = ANY($1::text[])
+             AND e.hotel_id = $2
+           ORDER BY e.employee_id
+           LIMIT 300`,
+          [visibleRoles, managerHotelId]
+        )
+      : db.query(
+          `SELECT
+             e.employee_id,
+             e.hotel_id,
+             h.hotel_name,
+             e.role_title,
+             e.hired_on,
+             p.person_id,
+             p.first_name,
+             p.last_name,
+             p.email,
+             p.phone,
+             p.address_line,
+             a.account_id,
+             a.role AS account_role,
+             a.username,
+             a.is_active
+           FROM employee e
+           JOIN person p ON p.person_id = e.person_id
+           JOIN hotel h ON h.hotel_id = e.hotel_id
+           JOIN auth_account a ON a.employee_id = e.employee_id
+           WHERE a.role = ANY($1::text[])
+           ORDER BY e.employee_id
+           LIMIT 300`,
+          [visibleRoles]
+        );
+
+    const hotelsQuery = isManager
+      ? db.query('SELECT hotel_id, hotel_name FROM hotel WHERE hotel_id = $1 ORDER BY hotel_id', [managerHotelId])
+      : db.query('SELECT hotel_id, hotel_name FROM hotel ORDER BY hotel_id');
+
     const [employees, hotels] = await Promise.all([
-      db.query(
-        `SELECT
-           e.employee_id,
-           e.hotel_id,
-           h.hotel_name,
-           e.role_title,
-           e.hired_on,
-           p.person_id,
-           p.legal_id,
-           p.id_type,
-           p.first_name,
-           p.last_name,
-           p.email,
-           p.phone,
-           p.address_line,
-           a.account_id,
-           a.role AS account_role,
-           a.username,
-           a.is_active
-         FROM employee e
-         JOIN person p ON p.person_id = e.person_id
-         JOIN hotel h ON h.hotel_id = e.hotel_id
-         JOIN auth_account a ON a.employee_id = e.employee_id
-         WHERE a.role = ANY($1::text[])
-         ORDER BY e.employee_id
-         LIMIT 300`,
-        [visibleRoles]
-      ),
-      db.query('SELECT hotel_id, hotel_name FROM hotel ORDER BY hotel_id')
+      employeeQuery,
+      hotelsQuery
     ]);
     res.render('manage/employees', {
       message: buildMessage(req.query),
@@ -1181,19 +1471,19 @@ app.post('/manage/employees', requireRole(['manager', 'admin']), async (req, res
       username,
       password
     } = req.body;
-    const normalizedLegalId = normalizeString(legal_id, 'Legal ID', 30);
-    const normalizedIdType = parseEnum(id_type, ['SIN', 'SSN', 'DL', 'PASSPORT'], 'ID type');
+    const isManager = req.auth.role === 'manager';
+    const managerHotelId = isManager ? await fetchManagerHotelId(req.auth.employeeId) : null;
+    const normalizedLegalId = normalizeSin(legal_id, 'SIN');
+    const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
     const normalizedFirstName = normalizeString(first_name, 'First name', 80);
     const normalizedLastName = normalizeString(last_name, 'Last name', 80);
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
-    const normalizedHotelId = parsePositiveInt(hotel_id, 'Hotel');
+    const normalizedHotelId = isManager ? managerHotelId : parsePositiveInt(hotel_id, 'Hotel');
     const normalizedRoleTitle = normalizeString(role_title, 'Role title', 80);
     const normalizedHiredOn = parseDateInput(hired_on, 'Hire date');
-    const normalizedAccountRole = req.auth.role === 'admin'
-      ? parseStaffAccountRole(account_role)
-      : 'employee';
+    const normalizedAccountRole = isManager ? 'employee' : parseStaffAccountRole(account_role);
     const normalizedUsername = normalizeUsername(username);
     const normalizedPassword = normalizePassword(password);
 
@@ -1255,24 +1545,24 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
       password,
       account_role
     } = req.body;
+    const isManager = req.auth.role === 'manager';
+    const managerHotelId = isManager ? await fetchManagerHotelId(req.auth.employeeId) : null;
     const normalizedFirstName = normalizeString(first_name, 'First name', 80);
     const normalizedLastName = normalizeString(last_name, 'Last name', 80);
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
-    const normalizedHotelId = parsePositiveInt(hotel_id, 'Hotel');
+    const normalizedHotelId = isManager ? managerHotelId : parsePositiveInt(hotel_id, 'Hotel');
     const normalizedRoleTitle = normalizeString(role_title, 'Role title', 80);
     const normalizedHiredOn = parseDateInput(hired_on, 'Hire date');
     const normalizedUsername = normalizeUsername(username);
-    const normalizedAccountRole = req.auth.role === 'admin'
-      ? parseStaffAccountRole(account_role)
-      : 'employee';
+    const normalizedAccountRole = isManager ? 'employee' : parseStaffAccountRole(account_role);
     const passwordProvided = String(password || '').trim().length > 0;
     const normalizedPassword = passwordProvided ? normalizePassword(password) : null;
 
     await client.query('BEGIN');
     const employee = await client.query(
-      `SELECT e.person_id, a.account_id, a.role AS account_role
+      `SELECT e.person_id, e.hotel_id, a.account_id, a.role AS account_role
        FROM employee e
        LEFT JOIN auth_account a ON a.employee_id = e.employee_id
        WHERE e.employee_id = $1
@@ -1281,6 +1571,14 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
     );
     if (employee.rowCount === 0) throw new Error('Employee not found.');
     const currentAccount = employee.rows[0];
+    if (isManager) {
+      if (currentAccount.account_role !== 'employee') {
+        throw new Error('Managers can only manage employee accounts.');
+      }
+      if (currentAccount.hotel_id !== managerHotelId) {
+        throw new Error('You can only manage employees assigned to your hotel.');
+      }
+    }
     if (currentAccount.account_role) {
       assertCanManageStaffAccount(req.auth.role, currentAccount.account_role);
     }
@@ -1343,17 +1641,28 @@ app.patch('/manage/employees/:id/account-status', requireRole(['manager', 'admin
   try {
     const employeeId = parsePositiveInt(req.params.id, 'Employee');
     const isActive = parseBooleanInput(req.body.is_active, 'Account status');
+    const isManager = req.auth.role === 'manager';
+    const managerHotelId = isManager ? await fetchManagerHotelId(req.auth.employeeId) : null;
 
     await client.query('BEGIN');
     const staffAccount = await client.query(
-      `SELECT account_id, role, is_active
-       FROM auth_account
-       WHERE employee_id = $1 AND role IN ('employee', 'manager')
+      `SELECT a.account_id, a.role, a.is_active, e.hotel_id
+       FROM auth_account a
+       JOIN employee e ON e.employee_id = a.employee_id
+       WHERE a.employee_id = $1 AND a.role IN ('employee', 'manager')
        FOR UPDATE`,
       [employeeId]
     );
     if (staffAccount.rowCount === 0) {
       throw new Error('Staff account not found.');
+    }
+    if (isManager) {
+      if (staffAccount.rows[0].role !== 'employee') {
+        throw new Error('Managers can only manage employee accounts.');
+      }
+      if (staffAccount.rows[0].hotel_id !== managerHotelId) {
+        throw new Error('You can only manage employees assigned to your hotel.');
+      }
     }
     assertCanManageStaffAccount(req.auth.role, staffAccount.rows[0].role);
 

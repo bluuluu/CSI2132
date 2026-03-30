@@ -12,14 +12,14 @@
     <p>Run check-ins, direct rentings, and payment operations.</p>
   <% } else if (auth.role === 'manager') { %>
     <h2>Manager Operations Dashboard</h2>
-    <p>Oversee desk operations, inspect SQL views, and manage customer records.</p>
+    <p>Use employee operations and review the employees assigned to your hotel.</p>
   <% } else { %>
     <h2>Admin Operations Dashboard</h2>
     <p>Full system control across bookings, rentings, SQL views, and all CRUD maintenance pages.</p>
   <% } %>
 </section>
 
-<% const showPeopleCounts = !auth.isAuthenticated || ['manager', 'admin'].includes(auth.role); %>
+<% const showPeopleCounts = auth.role === 'admin'; %>
 <section class="grid stats">
   <article class="stat-tile"><h3>Hotels</h3><p><%= counts.hotels %></p></article>
   <article class="stat-tile"><h3>Rooms</h3><p><%= counts.rooms %></p></article>
@@ -29,40 +29,32 @@
   <% } %>
 </section>
 
+<% if (auth.role === 'manager') { %>
+  <section class="card">
+    <h2>Employees In Your Hotel</h2>
+    <p class="muted"><%= managerHotelName ? managerHotelName : 'Your assigned hotel' %></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Employee ID</th><th>Name</th><th>Role</th></tr></thead>
+        <tbody>
+          <% if (!managerTeam || managerTeam.length === 0) { %>
+            <tr><td colspan="3" class="data-empty">No employees found for your hotel.</td></tr>
+          <% } %>
+          <% (managerTeam || []).forEach(m => { %>
+            <tr>
+              <td><%= m.employee_id %></td>
+              <td><%= m.first_name %> <%= m.last_name %></td>
+              <td><%= m.role_title %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
+
 <section class="card">
-  <h2>Deliverable 2 Coverage by Role</h2>
-  <% if (!auth.isAuthenticated) { %>
-    <ul>
-      <li>Public room/hotel availability browsing from the search page</li>
-      <li>Booking, renting, and management actions require authentication</li>
-      <li>Separate login pages for customer, employee, manager, and admin</li>
-    </ul>
-  <% } else if (auth.role === 'customer') { %>
-    <ul>
-      <li>Room search and booking flow with filter-driven availability</li>
-      <li>Customer settings for self profile updates and self account disable</li>
-      <li>No access to employee workflows, SQL views, or administrative CRUD pages</li>
-      <li>Role-specific customer portal</li>
-    </ul>
-  <% } else if (auth.role === 'employee') { %>
-    <ul>
-      <li>Booking-to-renting transformation and direct renting insertion</li>
-      <li>Payment insertion and operational desk actions</li>
-      <li>No SQL views or customer/hotel/room/employee CRUD access</li>
-    </ul>
-  <% } else if (auth.role === 'manager') { %>
-    <ul>
-      <li>All employee desk operations (check-ins, rentings, payments)</li>
-      <li>Can create/update/enable/disable employee accounts</li>
-      <li>Cannot manage manager accounts or admin-only customers/hotels/rooms CRUD</li>
-    </ul>
-  <% } else { %>
-    <ul>
-      <li>All customer, employee, and manager workflows</li>
-      <li>Full CRUD for customers, employees, hotels, and rooms</li>
-      <li>SQL views and complete administration surface</li>
-    </ul>
-  <% } %>
+  <h2>Quick Actions</h2>
   <div class="quick-links">
     <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations.</a>
     <% if (!auth.isAuthenticated) { %>
@@ -71,14 +63,16 @@
     <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
       <a href="/employee"><strong>Open Employee Panel</strong><br />Handle check-ins, rentings, and payments.</a>
     <% } %>
-    <% if (['manager', 'admin'].includes(auth.role)) { %>
-      <a href="/manage/employees"><strong>Manage Staff Accounts</strong><br />Create/update/enable/disable employee and manager logins.</a>
-      <a href="/views"><strong>Inspect SQL Views</strong><br />Available rooms by area and hotel capacity rollups.</a>
+    <% if (auth.role === 'manager') { %>
+      <a href="/manage/employees"><strong>Manage Hotel Employees</strong><br />Create employees and enable/disable employee accounts in your hotel.</a>
     <% } %>
     <% if (auth.role === 'customer') { %>
+      <a href="/customer/bookings"><strong>View My Bookings</strong><br />Check booking status and linked renting details.</a>
       <a href="/settings/customer"><strong>Open My Settings</strong><br />Update profile info and account login details.</a>
     <% } %>
     <% if (auth.role === 'admin') { %>
+      <a href="/manage/employees"><strong>Manage Staff Accounts</strong><br />Create/update/enable/disable employee and manager logins.</a>
+      <a href="/views"><strong>Inspect SQL Views</strong><br />Available rooms by area and hotel capacity rollups.</a>
       <a href="/manage/customers"><strong>Manage Customers</strong><br />Create and update customer profiles.</a>
       <a href="/manage/rooms"><strong>Manage Rooms</strong><br />Maintain room inventory and status.</a>
       <a href="/manage/hotels"><strong>Manage Hotels</strong><br />Maintain hotel metadata and chain links.</a>

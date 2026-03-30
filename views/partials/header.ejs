@@ -25,13 +25,14 @@
               <a href="/employee" data-nav>Employee Panel</a>
             <% } %>
             <% if (role === 'customer') { %>
+              <a href="/customer/bookings" data-nav>My Bookings</a>
               <a href="/settings/customer" data-nav>My Settings</a>
             <% } %>
             <% if (['manager', 'admin'].includes(role)) { %>
               <a href="/manage/employees" data-nav>Staff Accounts</a>
-              <a href="/views" data-nav>SQL Views</a>
             <% } %>
             <% if (role === 'admin') { %>
+              <a href="/views" data-nav>SQL Views</a>
               <a href="/manage/customers" data-nav>Customers</a>
               <a href="/manage/hotels" data-nav>Hotels CRUD</a>
               <a href="/manage/rooms" data-nav>Rooms CRUD</a>
@@ -39,6 +40,7 @@
           <% } else { %>
             <a href="/search" data-nav>Browse Rooms</a>
             <a href="/login" data-nav>Login</a>
+            <a href="/signup/customer" data-nav>Sign Up</a>
           <% } %>
         </nav>
 
