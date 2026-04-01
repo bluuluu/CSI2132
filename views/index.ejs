@@ -2,17 +2,14 @@
 
 <section class="page-intro">
   <% if (!auth.isAuthenticated) { %>
-    <h2>eHotels Portal</h2>
-    <p>Browse available rooms publicly, then sign in as customer, employee, manager, or admin for role-specific actions.</p>
-  <% } else if (auth.role === 'customer') { %>
-    <h2>Customer Booking Portal</h2>
-    <p>Search for rooms with filters, then place bookings from your customer account.</p>
+    <h2>eHotels Staff Portal</h2>
+    <p>Internal portal for employee, manager, and admin operations. Customers are registered at the desk by staff.</p>
   <% } else if (auth.role === 'employee') { %>
     <h2>Employee Operations Dashboard</h2>
-    <p>Run check-ins, direct rentings, and payment operations.</p>
+    <p>Register customers by SIN, create bookings, and run check-ins and rentings.</p>
   <% } else if (auth.role === 'manager') { %>
     <h2>Manager Operations Dashboard</h2>
-    <p>Use employee operations and review the employees assigned to your hotel.</p>
+    <p>Use employee operations, manage your hotel employees, and oversee desk workflows.</p>
   <% } else { %>
     <h2>Admin Operations Dashboard</h2>
     <p>Full system control across bookings, rentings, SQL views, and all CRUD maintenance pages.</p>
@@ -56,24 +53,23 @@
 <section class="card">
   <h2>Quick Actions</h2>
   <div class="quick-links">
-    <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations.</a>
     <% if (!auth.isAuthenticated) { %>
       <a href="/login"><strong>Choose a Login Portal</strong><br />Use role-based login to access protected actions.</a>
+    <% } else { %>
+      <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations for registered customers.</a>
     <% } %>
     <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
-      <a href="/employee"><strong>Open Employee Panel</strong><br />Handle check-ins, rentings, and payments.</a>
+      <a href="/employee"><strong>Open Employee Panel</strong><br />Handle check-ins and rentings.</a>
+    <% } %>
+    <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
+      <a href="/manage/customers"><strong>Register Customer</strong><br />Create or update customer records using SIN and contact info.</a>
     <% } %>
     <% if (auth.role === 'manager') { %>
       <a href="/manage/employees"><strong>Manage Hotel Employees</strong><br />Create employees and enable/disable employee accounts in your hotel.</a>
     <% } %>
-    <% if (auth.role === 'customer') { %>
-      <a href="/customer/bookings"><strong>View My Bookings</strong><br />Check booking status and linked renting details.</a>
-      <a href="/settings/customer"><strong>Open My Settings</strong><br />Update profile info and account login details.</a>
-    <% } %>
     <% if (auth.role === 'admin') { %>
       <a href="/manage/employees"><strong>Manage Staff Accounts</strong><br />Create/update/enable/disable employee and manager logins.</a>
       <a href="/views"><strong>Inspect SQL Views</strong><br />Available rooms by area and hotel capacity rollups.</a>
-      <a href="/manage/customers"><strong>Manage Customers</strong><br />Create and update customer profiles.</a>
       <a href="/manage/rooms"><strong>Manage Rooms</strong><br />Maintain room inventory and status.</a>
       <a href="/manage/hotels"><strong>Manage Hotels</strong><br />Maintain hotel metadata and chain links.</a>
     <% } %>

@@ -1,9 +1,11 @@
 <%- include('../partials/header', { title: 'Manage Customers', message }) %>
 <% const canDeleteCustomers = auth.role === 'admin'; %>
+<% const showAdminAccountDetails = auth.role === 'admin'; %>
+<% const customerColumnCount = showAdminAccountDetails ? 9 : 6; %>
 
 <section class="page-intro">
   <h2>Customer Records</h2>
-  <p>Create and update customer profiles, with login credentials and account status controls.</p>
+  <p>Register customers at the front desk using SIN and contact information.</p>
 </section>
 
 <section class="card">
@@ -43,8 +45,6 @@
     </label>
     <label>Address <input name="address_line" maxlength="255" required /></label>
     <label>Registration Date <input type="date" name="registration_date" required /></label>
-    <label>Username <input name="username" maxlength="60" pattern="[a-z0-9._-]{3,60}" required /></label>
-    <label>Password <input type="password" name="password" minlength="6" maxlength="120" required /></label>
     <div class="actions"><button type="submit">Create</button></div>
   </form>
 </section>
@@ -55,27 +55,42 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Username</th><th>Status</th><th>Registration</th><th>Update</th><th>Status Action</th>
+          <th>SIN (Primary ID)</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Registration</th>
+          <% if (showAdminAccountDetails) { %>
+            <th>Username</th>
+            <th>Account Status</th>
+          <% } %>
+          <th>Update</th>
           <% if (canDeleteCustomers) { %><th>Delete</th><% } %>
         </tr>
       </thead>
       <tbody>
         <% if (customers.length === 0) { %>
-          <tr><td colspan="<%= canDeleteCustomers ? 10 : 9 %>" class="data-empty">No customer records found.</td></tr>
+          <tr><td colspan="<%= customerColumnCount %>" class="data-empty">No customer records found.</td></tr>
         <% } %>
         <% customers.forEach(c => { %>
           <tr>
-            <td><%= c.customer_id %></td>
+            <td><%= c.legal_id %></td>
             <td><%= c.first_name %> <%= c.last_name %></td>
             <td><%= c.email %></td>
             <td><%= c.phone %></td>
-            <td><%= c.username || '-' %></td>
-            <td>
-              <span class="status-badge <%= c.is_active ? 'status-active' : 'status-cancelled' %>">
-                <%= c.is_active ? 'active' : 'inactive' %>
-              </span>
-            </td>
             <td><%= c.registration_date.toISOString().slice(0,10) %></td>
+            <% if (showAdminAccountDetails) { %>
+              <td><%= c.username || 'not linked' %></td>
+              <td>
+                <% if (!c.account_id) { %>
+                  <span class="status-badge">missing</span>
+                <% } else { %>
+                  <span class="status-badge <%= c.is_active ? 'status-active' : 'status-cancelled' %>">
+                    <%= c.is_active ? 'active' : 'inactive' %>
+                  </span>
+                <% } %>
+              </td>
+            <% } %>
             <td>
               <form method="POST" action="/manage/customers/<%= c.customer_id %>?_method=PATCH" class="inline-form stack-small">
                 <input name="first_name" value="<%= c.first_name %>" maxlength="80" required />
@@ -95,14 +110,6 @@
                 <input name="address_line" value="<%= c.address_line %>" maxlength="255" required />
                 <input type="date" name="registration_date" value="<%= c.registration_date.toISOString().slice(0,10) %>" required />
                 <button type="submit">Save</button>
-              </form>
-            </td>
-            <td>
-              <form method="POST" action="/manage/customers/<%= c.customer_id %>/account-status?_method=PATCH">
-                <input type="hidden" name="is_active" value="<%= c.is_active ? 'false' : 'true' %>" />
-                <button type="submit" class="<%= c.is_active ? 'danger' : '' %>">
-                  <%= c.is_active ? 'Disable' : 'Enable' %>
-                </button>
               </form>
             </td>
             <% if (canDeleteCustomers) { %>

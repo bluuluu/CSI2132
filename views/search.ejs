@@ -2,13 +2,20 @@
 
 <section class="page-intro">
   <h2>Room Search and Booking</h2>
-  <p>Anyone can browse room availability. Booking actions require a signed-in customer or staff account.</p>
+  <p>Staff can search room availability and create bookings by entering the customer's SIN.</p>
 </section>
 
 <section class="card">
   <h2>Search Filters</h2>
   <form method="GET" action="/search" class="grid form-grid" id="searchForm" data-autosubmit="true">
-    <label>Start Date <input type="date" name="start_date" value="<%= filters.start_date || '' %>" /></label>
+    <label>Start Date
+      <input
+        type="date"
+        name="start_date"
+        value="<%= filters.start_date || easternToday %>"
+        max="<%= easternToday %>"
+      />
+    </label>
     <label>End Date <input type="date" name="end_date" value="<%= filters.end_date || '' %>" /></label>
     <label>Capacity
       <select name="capacity">
@@ -78,36 +85,48 @@
             <td>$<%= room.base_price %></td>
             <td><%= room.amenities %></td>
             <td>
-              <% if (canBook) { %>
-                <form method="POST" action="/bookings" class="inline-form">
-                  <input type="hidden" name="room_id" value="<%= room.room_id %>" />
-                  <% if (auth.role === 'customer') { %>
-                    <input type="hidden" name="customer_id" value="<%= auth.customerId %>" />
-                    <span class="inline-note">Customer #<%= auth.customerId %></span>
-                  <% } else { %>
-                    <select name="customer_id" required>
-                      <option value="">Valid customer ID</option>
-                      <% customers.forEach(c => { %>
-                        <option value="<%= c.customer_id %>">#<%= c.customer_id %> <%= c.first_name %> <%= c.last_name %></option>
-                      <% }) %>
-                    </select>
-                    <% if (auth.role === 'admin') { %>
-                      <input type="number" name="employee_id" placeholder="Employee ID" min="1" />
-                    <% } %>
-                  <% } %>
-                  <input type="date" name="start_date" value="<%= filters.start_date || '' %>" required />
-                  <input type="date" name="end_date" value="<%= filters.end_date || '' %>" required />
-                  <button type="submit">Book</button>
-                </form>
-              <% } else { %>
-                <a href="/login" class="btn-secondary">Sign in to book</a>
-              <% } %>
+              <form method="POST" action="/bookings" class="inline-form">
+                <input type="hidden" name="room_id" value="<%= room.room_id %>" />
+                <input
+                  name="customer_sin"
+                  type="tel"
+                  inputmode="numeric"
+                  pattern="\d{9}"
+                  minlength="9"
+                  maxlength="9"
+                  placeholder="Customer SIN (e.g. 111111111)"
+                  list="customerSinList"
+                  title="Enter a 9-digit SIN."
+                  required
+                />
+                <% if (auth.role === 'admin') { %>
+                  <input type="number" name="employee_id" placeholder="Employee ID" min="1" />
+                <% } %>
+                <input
+                  type="date"
+                  name="start_date"
+                  value="<%= easternToday %>"
+                  min="<%= easternToday %>"
+                  max="<%= easternToday %>"
+                  hidden
+                  required
+                />
+                <span class="inline-note">Start: <%= easternToday %> (Eastern)</span>
+                <input type="date" name="end_date" value="<%= filters.end_date || '' %>" required />
+                <button type="submit">Book</button>
+              </form>
             </td>
           </tr>
         <% }) %>
       </tbody>
     </table>
   </div>
+  <datalist id="customerSinList">
+    <% customers.forEach(c => { %>
+      <option value="<%= c.legal_id %>">SIN <%= c.legal_id %></option>
+    <% }) %>
+  </datalist>
+  <p class="helper-line">Start date is fixed to today's Eastern date: <strong><%= easternToday %></strong>.</p>
 </section>
 
 <script>

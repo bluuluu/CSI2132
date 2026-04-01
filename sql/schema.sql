@@ -43,13 +43,14 @@ CREATE TABLE hotel (
 
 CREATE TABLE person (
   person_id SERIAL PRIMARY KEY,
-  legal_id VARCHAR(30) NOT NULL UNIQUE,
-  id_type VARCHAR(20) NOT NULL CHECK (id_type IN ('SIN', 'SSN', 'DL', 'PASSPORT')),
+  legal_id VARCHAR(9) NOT NULL UNIQUE,
+  id_type VARCHAR(20) NOT NULL CHECK (id_type = 'SIN'),
   first_name VARCHAR(80) NOT NULL,
   last_name VARCHAR(80) NOT NULL,
   email VARCHAR(120) NOT NULL UNIQUE,
   phone VARCHAR(30) NOT NULL,
-  address_line VARCHAR(255) NOT NULL
+  address_line VARCHAR(255) NOT NULL,
+  CONSTRAINT person_legal_id_sin_format_check CHECK (legal_id ~ '^[0-9]{9}$')
 );
 
 CREATE TABLE customer (

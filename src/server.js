@@ -21,7 +21,7 @@ const ROLE_LABELS = {
   employee: 'Employee',
   customer: 'Customer'
 };
-const LOGIN_ROLES = ['admin', 'employee', 'customer'];
+const LOGIN_ROLES = ['admin', 'employee'];
 const ROLE_HOME = {
   admin: '/',
   manager: '/',
@@ -50,6 +50,19 @@ function sanitizeDate(value) {
   if (!value) return null;
   const candidate = new Date(value);
   return Number.isNaN(candidate.getTime()) ? null : value;
+}
+
+function easternTodayISO() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Toronto',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const year = parts.find((p) => p.type === 'year')?.value;
+  const month = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeString(value, fieldName, maxLength, allowEmpty = false) {
@@ -202,7 +215,7 @@ function formatConstraintViolation(err) {
     return 'Email is already registered.';
   }
   if (constraint.includes('person_legal_id')) {
-    return 'Legal ID is already registered.';
+    return 'SIN is already registered.';
   }
   return 'An account with the same unique information already exists.';
 }
@@ -365,6 +378,43 @@ async function fetchManagerHotelId(employeeId) {
   return result.rows[0].hotel_id;
 }
 
+async function ensurePersonSinSchemaAndData() {
+  const personTable = await db.query("SELECT to_regclass('public.person') AS table_name");
+  if (!personTable.rows[0].table_name) {
+    return;
+  }
+
+  await db.query(`
+    WITH valid_sins AS (
+      SELECT legal_id::BIGINT AS sin_value
+      FROM person
+      WHERE legal_id ~ '^[0-9]{9}$'
+    ),
+    base AS (
+      SELECT COALESCE(MAX(sin_value), 100000000) AS max_sin
+      FROM valid_sins
+    ),
+    invalid_people AS (
+      SELECT
+        person_id,
+        row_number() OVER (ORDER BY person_id) AS rn
+      FROM person
+      WHERE legal_id !~ '^[0-9]{9}$'
+    )
+    UPDATE person p
+    SET legal_id = LPAD(((SELECT max_sin FROM base) + invalid_people.rn)::TEXT, 9, '0')
+    FROM invalid_people
+    WHERE p.person_id = invalid_people.person_id
+  `);
+
+  await db.query(`UPDATE person SET id_type = 'SIN' WHERE id_type <> 'SIN'`);
+  await db.query(`ALTER TABLE person DROP CONSTRAINT IF EXISTS person_id_type_check`);
+  await db.query(`ALTER TABLE person DROP CONSTRAINT IF EXISTS person_legal_id_sin_format_check`);
+  await db.query(`ALTER TABLE person ALTER COLUMN legal_id TYPE VARCHAR(9)`);
+  await db.query(`ALTER TABLE person ADD CONSTRAINT person_id_type_check CHECK (id_type = 'SIN')`);
+  await db.query(`ALTER TABLE person ADD CONSTRAINT person_legal_id_sin_format_check CHECK (legal_id ~ '^[0-9]{9}$')`);
+}
+
 async function ensureAuthSchemaAndSeed() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS auth_account (
@@ -432,7 +482,11 @@ app.use(async (req, res, next) => {
     if (Number.isInteger(sessionAccountId) && sessionAccountId > 0) {
       const account = await fetchAccountById(sessionAccountId);
       if (account && account.is_active) {
-        req.auth = mapAccountToAuth(account);
+        if (account.role === 'customer') {
+          clearAuthCookie(res);
+        } else {
+          req.auth = mapAccountToAuth(account);
+        }
       } else if (account && !account.is_active) {
         req.authDisabledMessage = inactiveMessageForRole(account.role);
         clearAuthCookie(res);
@@ -459,84 +513,11 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/signup/customer', (req, res) => {
-  if (req.auth.isAuthenticated) {
-    return res.redirect(ROLE_HOME[req.auth.role] || '/');
-  }
-  return res.render('signup-customer', {
-    title: 'Customer Sign Up',
-    message: buildMessage(req.query)
-  });
+  return redirectWith(res, '/login', 'Customer self-signup is disabled. Staff must register customers.', 'info');
 });
 
 app.post('/signup/customer', async (req, res) => {
-  const client = await db.getClient();
-  try {
-    if (req.auth.isAuthenticated) {
-      return res.redirect(ROLE_HOME[req.auth.role] || '/');
-    }
-
-    const {
-      legal_id,
-      id_type,
-      first_name,
-      last_name,
-      email,
-      phone,
-      address_line,
-      username,
-      password
-    } = req.body;
-
-    const normalizedLegalId = normalizeSin(legal_id, 'SIN');
-    const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
-    const normalizedFirstName = normalizeString(first_name, 'First name', 80);
-    const normalizedLastName = normalizeString(last_name, 'Last name', 80);
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedPhone = normalizePhone(phone);
-    const normalizedAddress = normalizeString(address_line, 'Address', 255);
-    const normalizedUsername = normalizeUsername(username);
-    const normalizedPassword = normalizePassword(password);
-
-    await client.query('BEGIN');
-    const person = await client.query(
-      `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING person_id`,
-      [
-        normalizedLegalId,
-        normalizedIdType,
-        normalizedFirstName,
-        normalizedLastName,
-        normalizedEmail,
-        normalizedPhone,
-        normalizedAddress
-      ]
-    );
-
-    const customer = await client.query(
-      `INSERT INTO customer (person_id, registration_date)
-       VALUES ($1, CURRENT_DATE)
-       RETURNING customer_id`,
-      [person.rows[0].person_id]
-    );
-
-    const account = await client.query(
-      `INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
-       VALUES ('customer', $1, $2, NULL, $3, TRUE)
-       RETURNING account_id`,
-      [normalizedUsername, normalizedPassword, customer.rows[0].customer_id]
-    );
-
-    await client.query('COMMIT');
-    setAuthCookie(res, account.rows[0].account_id);
-    return redirectWith(res, '/', 'Customer account created successfully.', 'success');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    const friendly = formatConstraintViolation(err);
-    return redirectWith(res, '/signup/customer', friendly || err.message, 'error');
-  } finally {
-    client.release();
-  }
+  return redirectWith(res, '/login', 'Customer self-signup is disabled. Staff must register customers.', 'info');
 });
 
 app.get('/login/:role', (req, res) => {
@@ -659,8 +640,9 @@ app.get('/', async (req, res) => {
   }
 });
 
-app.get('/search', async (req, res) => {
+app.get('/search', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
+    const easternToday = easternTodayISO();
     const filterData = await Promise.all([
       db.query('SELECT chain_id, chain_name FROM hotel_chain ORDER BY chain_name'),
       db.query('SELECT DISTINCT city FROM hotel ORDER BY city')
@@ -700,6 +682,9 @@ app.get('/search', async (req, res) => {
 
     const startDate = sanitizeDate(q.start_date);
     const endDate = sanitizeDate(q.end_date);
+    if (startDate && startDate > easternToday) {
+      throw new Error(`Start date cannot be in the future. Use Eastern today (${easternToday}).`);
+    }
     if ((startDate && !endDate) || (!startDate && endDate)) {
       throw new Error('Both start date and end date are required for date filtering.');
     }
@@ -751,77 +736,58 @@ app.get('/search', async (req, res) => {
       values
     );
 
-    const canBook = req.auth.isAuthenticated && ['customer', 'employee', 'manager', 'admin'].includes(req.auth.role);
-    const shouldLoadCustomerList = req.auth.isAuthenticated && ['employee', 'manager', 'admin'].includes(req.auth.role);
+    const customers = await db.query(
+      `SELECT c.customer_id, p.legal_id
+       FROM customer c
+       JOIN person p ON p.person_id = c.person_id
+       ORDER BY c.customer_id
+       LIMIT 200`
+    );
 
-    let customers = { rows: [] };
-    if (req.auth.role === 'customer') {
-      customers = await db.query(
-        `SELECT c.customer_id, p.first_name, p.last_name
-         FROM customer c
-         JOIN person p ON p.person_id = c.person_id
-         JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
-         WHERE c.customer_id = $1 AND a.is_active = TRUE
-         LIMIT 1`,
-        [req.auth.customerId]
-      );
-    } else if (shouldLoadCustomerList) {
-      customers = await db.query(
-        `SELECT c.customer_id, p.first_name, p.last_name
-         FROM customer c
-         JOIN person p ON p.person_id = c.person_id
-         JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
-         WHERE a.is_active = TRUE
-         ORDER BY c.customer_id
-         LIMIT 200`
-      );
-    }
+    const renderedFilters = { ...q, start_date: q.start_date || easternToday };
 
     res.render('search', {
       message: buildMessage(req.query),
-      filters: q,
+      filters: renderedFilters,
       chains: filterData[0].rows,
       cities: filterData[1].rows,
       rooms: rooms.rows,
       customers: customers.rows,
-      canBook
+      easternToday
     });
   } catch (err) {
     redirectWith(res, '/search', err.message, 'error');
   }
 });
 
-app.post('/bookings', requireRole(['customer', 'employee', 'manager', 'admin']), async (req, res) => {
-  const { room_id, customer_id, employee_id, start_date, end_date } = req.body;
+app.post('/bookings', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
+  const { room_id, customer_sin, employee_id, start_date, end_date } = req.body;
   try {
     const roomId = parsePositiveInt(room_id, 'Room');
-    const effectiveCustomerId = req.auth.role === 'customer'
-      ? parsePositiveInt(req.auth.customerId, 'Customer')
-      : parsePositiveInt(customer_id, 'Customer');
-    const effectiveEmployeeId = req.auth.role === 'customer'
-      ? null
-      : req.auth.role === 'employee' || req.auth.role === 'manager'
-        ? parsePositiveInt(req.auth.employeeId, 'Employee')
-        : parseOptionalPositiveInt(employee_id, 'Employee');
+    const normalizedCustomerSin = normalizeSin(customer_sin, 'Customer SIN');
+    const effectiveEmployeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
+      ? parsePositiveInt(req.auth.employeeId, 'Employee')
+      : parseOptionalPositiveInt(employee_id, 'Employee');
     const normalizedStartDate = parseDateInput(start_date, 'Start date');
     const normalizedEndDate = parseDateInput(end_date, 'End date');
-    ensureEndDateAfterStartDate(normalizedStartDate, normalizedEndDate);
-
-    if (!effectiveCustomerId) {
-      throw new Error('Customer account is not linked to a valid customer record.');
+    const easternToday = easternTodayISO();
+    if (normalizedStartDate !== easternToday) {
+      throw new Error(`Start date must be today (${easternToday}) based on Eastern Time.`);
     }
+    ensureEndDateAfterStartDate(normalizedStartDate, normalizedEndDate);
 
     const customerCheck = await db.query(
       `SELECT c.customer_id
        FROM customer c
-       JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
-       WHERE c.customer_id = $1 AND a.is_active = TRUE
+       JOIN person p ON p.person_id = c.person_id
+       WHERE p.legal_id = $1
        LIMIT 1`,
-      [effectiveCustomerId]
+      [normalizedCustomerSin]
     );
     if (customerCheck.rowCount === 0) {
-      throw new Error('Customer account not found or inactive.');
+      throw new Error('No customer found with that SIN.');
     }
+    const effectiveCustomerId = customerCheck.rows[0].customer_id;
 
     await db.query(
       `INSERT INTO booking (room_id, customer_id, created_by_employee_id, start_date, end_date, status)
@@ -1007,7 +973,7 @@ app.patch('/settings/customer/deactivate', requireRole(['customer']), async (req
     clearAuthCookie(res);
     redirectWith(
       res,
-      '/login/customer',
+      '/login',
       'Your account has been disabled. Please contact an employee to reactivate it.',
       'info'
     );
@@ -1018,40 +984,48 @@ app.patch('/settings/customer/deactivate', requireRole(['customer']), async (req
 
 app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
-    const [employees, customers, availableRooms, activeBookings, activeRentings, disabledCustomerAccounts] = await Promise.all([
+    const easternToday = easternTodayISO();
+    const [employees, customers, availableRooms, activeBookings, activeRentings] = await Promise.all([
       db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
                 FROM employee e
                 JOIN person p ON p.person_id = e.person_id
                 JOIN hotel h ON h.hotel_id = e.hotel_id
                 ORDER BY e.employee_id`),
-      db.query(`SELECT c.customer_id, p.first_name, p.last_name
+      db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
                 FROM customer c
                 JOIN person p ON p.person_id = c.person_id
-                JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
-                WHERE a.is_active = TRUE
                 ORDER BY c.customer_id LIMIT 200`),
       db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
                 FROM room r JOIN hotel h ON h.hotel_id = r.hotel_id
                 WHERE r.current_status = 'available'
                 ORDER BY r.room_id LIMIT 200`),
-      db.query(`SELECT b.booking_id, b.room_id, b.customer_id, b.start_date, b.end_date, b.status
-                FROM booking b
-                WHERE b.status IN ('reserved', 'checked_in')
-                ORDER BY b.booking_id DESC LIMIT 200`),
-      db.query(`SELECT renting_id, room_id, customer_id, employee_id, start_date, end_date, status
-                FROM renting
-                ORDER BY renting_id DESC LIMIT 200`),
       db.query(`SELECT
-                  c.customer_id,
-                  p.first_name,
-                  p.last_name,
-                  a.username
-                FROM auth_account a
-                JOIN customer c ON c.customer_id = a.customer_id
+                  b.booking_id,
+                  b.room_id,
+                  b.customer_id,
+                  p.legal_id AS customer_sin,
+                  b.start_date,
+                  b.end_date,
+                  b.status
+                FROM booking b
+                JOIN customer c ON c.customer_id = b.customer_id
                 JOIN person p ON p.person_id = c.person_id
-                WHERE a.role = 'customer' AND a.is_active = FALSE
-                ORDER BY c.customer_id
-                LIMIT 200`)
+                WHERE b.status IN ('reserved', 'checked_in')
+                  AND b.start_date = $1
+                ORDER BY b.booking_id DESC LIMIT 200`, [easternToday]),
+      db.query(`SELECT
+                  rt.renting_id,
+                  rt.room_id,
+                  rt.customer_id,
+                  p.legal_id AS customer_sin,
+                  rt.employee_id,
+                  rt.start_date,
+                  rt.end_date,
+                  rt.status
+                FROM renting rt
+                JOIN customer c ON c.customer_id = rt.customer_id
+                JOIN person p ON p.person_id = c.person_id
+                ORDER BY rt.renting_id DESC LIMIT 200`)
     ]);
 
     res.render('employee', {
@@ -1061,27 +1035,8 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
       availableRooms: availableRooms.rows,
       activeBookings: activeBookings.rows,
       activeRentings: activeRentings.rows,
-      disabledCustomerAccounts: disabledCustomerAccounts.rows
+      easternToday
     });
-  } catch (err) {
-    redirectWith(res, '/employee', err.message, 'error');
-  }
-});
-
-app.patch('/employee/customers/:id/reactivate', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
-  try {
-    const customerId = parsePositiveInt(req.params.id, 'Customer');
-    const updated = await db.query(
-      `UPDATE auth_account
-       SET is_active = TRUE
-       WHERE role = 'customer' AND customer_id = $1
-       RETURNING account_id`,
-      [customerId]
-    );
-    if (updated.rowCount === 0) {
-      throw new Error('Customer account not found.');
-    }
-    redirectWith(res, '/employee', 'Customer account reactivated.', 'success');
   } catch (err) {
     redirectWith(res, '/employee', err.message, 'error');
   }
@@ -1090,6 +1045,7 @@ app.patch('/employee/customers/:id/reactivate', requireRole(['employee', 'manage
 app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   const client = await db.getClient();
   try {
+    const easternToday = easternTodayISO();
     const bookingId = parsePositiveInt(req.body.booking_id, 'Booking');
     const employeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
       ? parsePositiveInt(req.auth.employeeId, 'Employee')
@@ -1109,6 +1065,12 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
     const b = bookingResult.rows[0];
     if (!['reserved', 'checked_in'].includes(b.status)) {
       throw new Error('Booking cannot be transformed from current status.');
+    }
+    const bookingStartDate = typeof b.start_date === 'string'
+      ? b.start_date.slice(0, 10)
+      : new Date(b.start_date).toISOString().slice(0, 10);
+    if (bookingStartDate !== easternToday) {
+      throw new Error(`Only bookings that start today (${easternToday}, Eastern Time) can be checked in.`);
     }
 
     await client.query(
@@ -1130,28 +1092,33 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
 });
 
 app.post('/employee/rentings/direct', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
-  const { room_id, customer_id, employee_id, start_date, end_date } = req.body;
+  const { room_id, customer_sin, employee_id, start_date, end_date } = req.body;
   try {
+    const easternToday = easternTodayISO();
     const roomId = parsePositiveInt(room_id, 'Room');
-    const customerId = parsePositiveInt(customer_id, 'Customer');
+    const normalizedCustomerSin = normalizeSin(customer_sin, 'Customer SIN');
     const effectiveEmployeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
       ? parsePositiveInt(req.auth.employeeId, 'Employee')
       : parsePositiveInt(employee_id, 'Employee');
     const normalizedStartDate = parseDateInput(start_date, 'Start date');
     const normalizedEndDate = parseDateInput(end_date, 'End date');
+    if (normalizedStartDate !== easternToday) {
+      throw new Error(`Start date must be today (${easternToday}) based on Eastern Time.`);
+    }
     ensureEndDateAfterStartDate(normalizedStartDate, normalizedEndDate);
 
     const customerCheck = await db.query(
       `SELECT c.customer_id
        FROM customer c
-       JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
-       WHERE c.customer_id = $1 AND a.is_active = TRUE
+       JOIN person p ON p.person_id = c.person_id
+       WHERE p.legal_id = $1
        LIMIT 1`,
-      [customerId]
+      [normalizedCustomerSin]
     );
     if (customerCheck.rowCount === 0) {
-      throw new Error('Customer account not found or inactive.');
+      throw new Error('No customer found with that SIN.');
     }
+    const customerId = customerCheck.rows[0].customer_id;
 
     await db.query(
       `INSERT INTO renting (room_id, customer_id, employee_id, source_booking_id, start_date, end_date, status)
@@ -1174,27 +1141,6 @@ app.patch('/employee/rentings/:id/complete', requireRole(['employee', 'manager',
   }
 });
 
-app.post('/employee/payments', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
-  const { renting_id, employee_id, amount, method } = req.body;
-  try {
-    const rentingId = parsePositiveInt(renting_id, 'Renting');
-    const effectiveEmployeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
-      ? parsePositiveInt(req.auth.employeeId, 'Employee')
-      : parsePositiveInt(employee_id, 'Employee');
-    const normalizedAmount = parsePositiveNumber(amount, 'Amount');
-    const normalizedMethod = parseEnum(method, ['cash', 'credit', 'debit', 'online'], 'Payment method');
-
-    await db.query(
-      `INSERT INTO payment (renting_id, employee_id, amount, method)
-       VALUES ($1, $2, $3, $4)`,
-      [rentingId, effectiveEmployeeId, normalizedAmount, normalizedMethod]
-    );
-    redirectWith(res, '/employee', 'Payment recorded.', 'success');
-  } catch (err) {
-    redirectWith(res, '/employee', err.message, 'error');
-  }
-});
-
 app.get('/views', requireRole(['admin']), async (req, res) => {
   try {
     const [byArea, byHotel] = await Promise.all([
@@ -1212,13 +1158,14 @@ app.get('/views', requireRole(['admin']), async (req, res) => {
   }
 });
 
-app.get('/manage/customers', requireRole(['admin']), async (req, res) => {
+app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
     const customers = await db.query(
       `SELECT
          c.customer_id,
          c.registration_date,
          p.person_id,
+         p.legal_id,
          p.id_type,
          p.first_name,
          p.last_name,
@@ -1230,7 +1177,9 @@ app.get('/manage/customers', requireRole(['admin']), async (req, res) => {
          a.is_active
        FROM customer c
        JOIN person p ON p.person_id = c.person_id
-       LEFT JOIN auth_account a ON a.customer_id = c.customer_id AND a.role = 'customer'
+       LEFT JOIN auth_account a
+         ON a.customer_id = c.customer_id
+        AND a.role = 'customer'
        ORDER BY c.customer_id LIMIT 300`
     );
     res.render('manage/customers', { message: buildMessage(req.query), customers: customers.rows });
@@ -1239,7 +1188,7 @@ app.get('/manage/customers', requireRole(['admin']), async (req, res) => {
   }
 });
 
-app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
+app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   const client = await db.getClient();
   try {
     const {
@@ -1250,9 +1199,7 @@ app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
       email,
       phone,
       address_line,
-      registration_date,
-      username,
-      password
+      registration_date
     } = req.body;
     const normalizedLegalId = normalizeSin(legal_id, 'SIN');
     const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
@@ -1262,8 +1209,6 @@ app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
     const normalizedRegistrationDate = parseDateInput(registration_date, 'Registration date');
-    const normalizedUsername = normalizeUsername(username);
-    const normalizedPassword = normalizePassword(password);
 
     await client.query('BEGIN');
     const person = await client.query(
@@ -1279,21 +1224,20 @@ app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
         normalizedAddress
       ]
     );
-    await client.query(
-      `INSERT INTO customer (person_id, registration_date) VALUES ($1, $2)`,
+    const customer = await client.query(
+      `INSERT INTO customer (person_id, registration_date)
+       VALUES ($1, $2)
+       RETURNING customer_id`,
       [person.rows[0].person_id, normalizedRegistrationDate]
     );
-    const customerCreated = await client.query(
-      `SELECT customer_id FROM customer WHERE person_id = $1`,
-      [person.rows[0].person_id]
-    );
+    const customerId = customer.rows[0].customer_id;
     await client.query(
       `INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
        VALUES ('customer', $1, $2, NULL, $3, TRUE)`,
-      [normalizedUsername, normalizedPassword, customerCreated.rows[0].customer_id]
+      [`customer${customerId}`, `customer${customerId}123`, customerId]
     );
     await client.query('COMMIT');
-    redirectWith(res, '/manage/customers', 'Customer created.', 'success');
+    redirectWith(res, '/manage/customers', 'Customer created with linked account.', 'success');
   } catch (err) {
     await client.query('ROLLBACK');
     redirectWith(res, '/manage/customers', err.message, 'error');
@@ -1302,7 +1246,7 @@ app.post('/manage/customers', requireRole(['admin']), async (req, res) => {
   }
 });
 
-app.patch('/manage/customers/:id', requireRole(['admin']), async (req, res) => {
+app.patch('/manage/customers/:id', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   const client = await db.getClient();
   try {
     const customerId = parsePositiveInt(req.params.id, 'Customer');
@@ -1334,21 +1278,9 @@ app.patch('/manage/customers/:id', requireRole(['admin']), async (req, res) => {
   }
 });
 
-app.patch('/manage/customers/:id/account-status', requireRole(['admin']), async (req, res) => {
+app.patch('/manage/customers/:id/account-status', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
-    const customerId = parsePositiveInt(req.params.id, 'Customer');
-    const isActive = parseBooleanInput(req.body.is_active, 'Account status');
-    const updated = await db.query(
-      `UPDATE auth_account
-       SET is_active = $1
-       WHERE role = 'customer' AND customer_id = $2
-       RETURNING account_id`,
-      [isActive, customerId]
-    );
-    if (updated.rowCount === 0) {
-      throw new Error('Customer account not found.');
-    }
-    redirectWith(res, '/manage/customers', `Customer account ${isActive ? 'enabled' : 'disabled'}.`, 'success');
+    redirectWith(res, '/manage/customers', 'Customer login accounts are disabled in staff-only mode.', 'info');
   } catch (err) {
     redirectWith(res, '/manage/customers', err.message, 'error');
   }
@@ -1388,6 +1320,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              e.role_title,
              e.hired_on,
              p.person_id,
+             p.legal_id,
              p.first_name,
              p.last_name,
              p.email,
@@ -1415,6 +1348,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              e.role_title,
              e.hired_on,
              p.person_id,
+             p.legal_id,
              p.first_name,
              p.last_name,
              p.email,
@@ -1962,6 +1896,7 @@ app.use((req, res) => {
 async function startServer() {
   try {
     await initializeDatabaseIfNeeded();
+    await ensurePersonSinSchemaAndData();
     await ensureAuthSchemaAndSeed();
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);

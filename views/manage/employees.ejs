@@ -1,4 +1,5 @@
 <%- include('../partials/header', { title: 'Manage Staff Accounts', message }) %>
+<% const staffColumnCount = 10; %>
 
 <section class="page-intro">
   <h2>Staff Accounts</h2>
@@ -76,7 +77,8 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
+          <th>SIN (Primary ID)</th>
+          <th>Employee ID</th>
           <th>Name</th>
           <th>Hotel</th>
           <th>Role Title</th>
@@ -89,10 +91,11 @@
       </thead>
       <tbody>
         <% if (employees.length === 0) { %>
-          <tr><td colspan="9" class="data-empty">No staff records found.</td></tr>
+          <tr><td colspan="<%= staffColumnCount %>" class="data-empty">No staff records found.</td></tr>
         <% } %>
         <% employees.forEach(e => { %>
           <tr>
+            <td><%= e.legal_id %></td>
             <td><%= e.employee_id %></td>
             <td><%= e.first_name %> <%= e.last_name %></td>
             <td><%= e.hotel_name %></td>

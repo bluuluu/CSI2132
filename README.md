@@ -91,12 +91,10 @@ Keep this terminal running while using the app.
 
 ## Role-Based Login
 
-The app now uses separate login pages for customer, staff, and admin:
+The app now uses staff-only login pages:
 
-- `/login/customer`
 - `/login/employee`
 - `/login/admin`
-- `/signup/customer` (new customer registration)
 
 You can also start from `/login` and choose a role card.
 
@@ -108,35 +106,18 @@ You can also start from `/login` and choose a role card.
   Use the staff login page: `/login/employee`
 - Employee accounts (seeded): `employee<ID>` / `employee<ID>123`  
   Example: `employee2` / `employee2123`
-- Customer accounts (seeded): `customer<ID>` / `customer<ID>123`  
-  Example: `customer1` / `customer1123`
-
-### Customer Sign Up
-
-- Guests can create a customer account from `/signup/customer`.
-- Required signup data is validated server-side:
-  - `username` (3-60, lowercase letters/numbers/`._-`)
-  - `password` (6-120 chars)
-  - first/last name, SIN (9 digits, example `111111111`), ID type (`SIN` only), email, 10-digit phone, address
-- Duplicate `username`, `email`, or `legal ID` is rejected with a friendly error.
-- Values like `EMP39203` are legal ID values in demo data, not ID types.
-- Invalid inputs show browser validation messages and invalid fields are highlighted in red.
 
 ### Access Differences
 
 - Public (not signed in):
-  - Can browse available rooms/hotels in `/search`
-  - Cannot create bookings, rentings, payments, or management actions
-- Customer:
-  - Can search/filter rooms and create bookings for their own customer account
-  - Can open `/settings/customer` to update profile/login info
-  - Can disable their own account (reactivation requires an employee/admin)
-  - Cannot access employee, manager, or admin management pages
+  - Can access login page only
+  - Operational pages require staff/admin authentication
 - Employee:
-  - Can access employee panel (booking -> renting, direct renting, payments)
-  - Can reactivate disabled customer accounts
-  - Can book for valid customer IDs from `/search`
-  - Cannot manage staff accounts, SQL views, or admin CRUD pages
+  - Can register customers at the desk using SIN (9 digits)
+  - Can create bookings and direct rentings for registered customers by entering customer SIN
+  - Booking start date is fixed to today's Eastern date
+  - Can run check-in and direct renting workflows
+  - Cannot manage staff accounts, SQL views, or hotel/room admin CRUD pages
 - Manager:
   - Includes all employee capabilities
   - Can view employees assigned to the same hotel
@@ -147,6 +128,7 @@ You can also start from `/login` and choose a role card.
   - Full access to all workflows
   - Can create customers, employees, and managers
   - Can enable/disable both employee and manager accounts
+  - Can view full account details (including SIN and login status) for employees, managers, and customers
   - Can manage hotels/rooms/customers and SQL views
 
 
@@ -155,17 +137,16 @@ You can also start from `/login` and choose a role card.
 
 - Room search with multi-criteria filters:
   - dates, room capacity, area, hotel chain, category, total rooms, and price
-- Public room/hotel browsing with authenticated booking flow
-- Role-based login with separated customer/employee/manager/admin portals and permission controls
+- Staff-only authenticated booking flow
+- Role-based login for employee/manager/admin portals and permission controls
 - DB-backed login accounts (`auth_account`) for admin, manager, employee, and customer
 - Employee panel:
   - booking -> renting transformation
   - direct renting creation
-  - payment insertion
-- customer account reactivation by employee/manager/admin
+- Front-desk customer registration by SIN
+- DB-level SIN enforcement for all people (customers, employees, managers): `id_type='SIN'` and exactly 9 digits
 - Admin staff account management with enable/disable workflows (no destructive staff deletion)
-- Customer self-settings (profile update + self-disable)
-- Admin CRUD pages for customers, hotels, and rooms
+- CRUD pages for customers (staff/admin), and hotels/rooms (admin)
 - Required SQL Views displayed in UI
 - Triggers for overlap prevention, room status synchronization, and archiving
 - Indexes for common filter/query paths

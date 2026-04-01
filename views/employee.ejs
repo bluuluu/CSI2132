@@ -3,7 +3,7 @@
 
 <section class="page-intro">
   <h2>Front Desk Operations</h2>
-  <p>Handle check-ins, walk-in rentings, and payment recording from one operational screen.</p>
+  <p>Handle check-ins and walk-in rentings from one operational screen.</p>
 </section>
 
 <section class="card">
@@ -30,13 +30,19 @@
         <% }) %>
       </select>
     </label>
-    <label>Customer
-      <select name="customer_id" required>
-        <option value="">Choose</option>
-        <% customers.forEach(c => { %>
-          <option value="<%= c.customer_id %>">#<%= c.customer_id %> <%= c.first_name %> <%= c.last_name %></option>
-        <% }) %>
-      </select>
+    <label>Customer SIN
+      <input
+        name="customer_sin"
+        type="tel"
+        inputmode="numeric"
+        pattern="\d{9}"
+        minlength="9"
+        maxlength="9"
+        placeholder="111111111"
+        list="customerSinList"
+        title="Enter a 9-digit SIN."
+        required
+      />
     </label>
     <% if (adminNeedsEmployeeId) { %>
       <label>Employee
@@ -50,64 +56,23 @@
     <% } else { %>
       <span class="inline-note">Using signed-in employee ID.</span>
     <% } %>
-    <label>Start Date <input type="date" name="start_date" required /></label>
+    <input type="date" name="start_date" value="<%= easternToday %>" min="<%= easternToday %>" max="<%= easternToday %>" hidden required />
+    <span class="inline-note">Start: <%= easternToday %> (Eastern)</span>
     <label>End Date <input type="date" name="end_date" required /></label>
     <div class="actions"><button type="submit">Create Renting</button></div>
   </form>
-</section>
-
-<section class="card">
-  <h2>Insert Payment</h2>
-  <form method="POST" action="/employee/payments" class="grid form-grid">
-    <label>Renting ID <input type="number" name="renting_id" min="1" required /></label>
-    <% if (adminNeedsEmployeeId) { %>
-      <label>Employee ID <input type="number" name="employee_id" min="1" required /></label>
-    <% } else { %>
-      <span class="inline-note">Using signed-in employee ID.</span>
-    <% } %>
-    <label>Amount <input type="number" name="amount" step="0.01" min="0.01" required /></label>
-    <label>Method
-      <select name="method" required>
-        <% ['cash','credit','debit','online'].forEach(m => { %>
-          <option value="<%= m %>"><%= m %></option>
-        <% }) %>
-      </select>
-    </label>
-    <div class="actions"><button type="submit">Record Payment</button></div>
-  </form>
-</section>
-
-<section class="card">
-  <h2>Reactivate Disabled Customer Accounts</h2>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Customer ID</th><th>Name</th><th>Username</th><th>Action</th></tr></thead>
-      <tbody>
-        <% if (disabledCustomerAccounts.length === 0) { %>
-          <tr><td colspan="4" class="data-empty">No disabled customer accounts.</td></tr>
-        <% } %>
-        <% disabledCustomerAccounts.forEach(c => { %>
-          <tr>
-            <td><%= c.customer_id %></td>
-            <td><%= c.first_name %> <%= c.last_name %></td>
-            <td><%= c.username %></td>
-            <td>
-              <form method="POST" action="/employee/customers/<%= c.customer_id %>/reactivate?_method=PATCH">
-                <button type="submit">Reactivate</button>
-              </form>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
+  <datalist id="customerSinList">
+    <% customers.forEach(c => { %>
+      <option value="<%= c.legal_id %>">SIN <%= c.legal_id %> - <%= c.first_name %> <%= c.last_name %></option>
+    <% }) %>
+  </datalist>
 </section>
 
 <section class="card">
   <h2>Current Bookings</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
+      <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
       <tbody>
       <% if (activeBookings.length === 0) { %>
         <tr><td colspan="6" class="data-empty">No active bookings to display.</td></tr>
@@ -116,7 +81,7 @@
         <tr>
           <td><%= b.booking_id %></td>
           <td><%= b.room_id %></td>
-          <td><%= b.customer_id %></td>
+          <td><%= b.customer_sin %></td>
           <td><%= b.start_date.toISOString().slice(0,10) %></td>
           <td><%= b.end_date.toISOString().slice(0,10) %></td>
           <td><span class="status-badge status-<%= b.status.replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
@@ -131,7 +96,7 @@
   <h2>Current / Recent Rentings</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Room</th><th>Customer</th><th>Employee</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
+      <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Employee</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
       <tbody>
       <% if (activeRentings.length === 0) { %>
         <tr><td colspan="8" class="data-empty">No rentings found.</td></tr>
@@ -140,7 +105,7 @@
         <tr>
           <td><%= r.renting_id %></td>
           <td><%= r.room_id %></td>
-          <td><%= r.customer_id %></td>
+          <td><%= r.customer_sin %></td>
           <td><%= r.employee_id %></td>
           <td><%= r.start_date.toISOString().slice(0,10) %></td>
           <td><%= r.end_date.toISOString().slice(0,10) %></td>
