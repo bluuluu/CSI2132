@@ -11,12 +11,12 @@
     <table>
       <thead>
         <tr>
-          <th>Booking ID</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Booking Status</th><th>Linked Renting</th>
+          <th>Booking ID</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Booking Status</th><th>Linked Renting</th><th>Action</th>
         </tr>
       </thead>
       <tbody>
         <% if (!bookings || bookings.length === 0) { %>
-          <tr><td colspan="8" class="data-empty">You have no bookings yet.</td></tr>
+          <tr><td colspan="9" class="data-empty">You have no bookings yet.</td></tr>
         <% } %>
         <% (bookings || []).forEach(b => { %>
           <tr>
@@ -33,6 +33,15 @@
                 <span class="status-badge status-<%= String(b.linked_renting_status || '').replace(/[^a-z_]/g, '_') %>"><%= b.linked_renting_status %></span>
               <% } else { %>
                 <span class="muted">Not checked in yet</span>
+              <% } %>
+            </td>
+            <td>
+              <% if (b.status === 'reserved') { %>
+                <form method="POST" action="/customer/bookings/<%= b.booking_id %>/cancel?_method=PATCH">
+                  <button type="submit">Cancel</button>
+                </form>
+              <% } else { %>
+                <span class="muted">-</span>
               <% } %>
             </td>
           </tr>

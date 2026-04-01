@@ -1,9 +1,12 @@
 <%- include('partials/header', { title: 'Home', message }) %>
 
 <section class="page-intro">
-  <% if (!auth.isAuthenticated) { %>
-    <h2>eHotels Staff Portal</h2>
-    <p>Internal portal for employee, manager, and admin operations. Customers are registered at the desk by staff.</p>
+<% if (!auth.isAuthenticated) { %>
+    <h2>eHotels Portal</h2>
+    <p>Browse rooms publicly, then sign in as customer, staff, or admin for role-based booking and operations.</p>
+  <% } else if (auth.role === 'customer') { %>
+    <h2>Customer Portal</h2>
+    <p>Browse room availability, create bookings for your account, and track your bookings and rentings.</p>
   <% } else if (auth.role === 'employee') { %>
     <h2>Employee Operations Dashboard</h2>
     <p>Register customers by SIN, create bookings, and run check-ins and rentings.</p>
@@ -54,12 +57,18 @@
   <h2>Quick Actions</h2>
   <div class="quick-links">
     <% if (!auth.isAuthenticated) { %>
+      <a href="/search"><strong>Browse Rooms</strong><br />View room inventory, availability status, and hotel details.</a>
       <a href="/login"><strong>Choose a Login Portal</strong><br />Use role-based login to access protected actions.</a>
     <% } else { %>
-      <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations for registered customers.</a>
+      <a href="/search"><strong>Open Booking Search</strong><br />Find rooms and create reservations based on your role permissions.</a>
+    <% } %>
+    <% if (auth.role === 'customer') { %>
+      <a href="/customer/bookings"><strong>My Bookings</strong><br />See reservation history and related renting records.</a>
+      <a href="/settings/customer"><strong>Account Settings</strong><br />Update profile details and account status.</a>
     <% } %>
     <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
       <a href="/employee"><strong>Open Employee Panel</strong><br />Handle check-ins and rentings.</a>
+      <a href="/archives"><strong>View Archives</strong><br />Review completed/cancelled booking and renting history.</a>
     <% } %>
     <% if (['employee', 'manager', 'admin'].includes(auth.role)) { %>
       <a href="/manage/customers"><strong>Register Customer</strong><br />Create or update customer records using SIN and contact info.</a>

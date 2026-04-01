@@ -8,6 +8,7 @@
 
 <section class="card">
   <h2>Transform Booking to Renting (Check-in)</h2>
+  <p class="helper-line">Use this when a customer arrives for a booking that starts today.</p>
   <form method="POST" action="/employee/rentings/from-booking" class="grid form-grid">
     <label>Booking ID <input type="number" name="booking_id" min="1" required /></label>
     <% if (adminNeedsEmployeeId) { %>
@@ -21,7 +22,7 @@
 
 <section class="card">
   <h2>Create Direct Renting</h2>
-  <form method="POST" action="/employee/rentings/direct" class="grid form-grid">
+  <form method="POST" action="/employee/rentings/direct" class="grid form-grid" id="directRentingForm">
     <label>Room
       <select name="room_id" required>
         <option value="">Choose</option>
@@ -56,11 +57,13 @@
     <% } else { %>
       <span class="inline-note">Using signed-in employee ID.</span>
     <% } %>
-    <input type="date" name="start_date" value="<%= easternToday %>" min="<%= easternToday %>" max="<%= easternToday %>" hidden required />
-    <span class="inline-note">Start: <%= easternToday %> (Eastern)</span>
+    <label>Start Date
+      <input type="date" name="start_date" value="<%= easternToday %>" required />
+    </label>
     <label>End Date <input type="date" name="end_date" required /></label>
     <div class="actions"><button type="submit">Create Renting</button></div>
   </form>
+  <p class="helper-line">Direct renting can start on any date. End date must be after start date.</p>
   <datalist id="customerSinList">
     <% customers.forEach(c => { %>
       <option value="<%= c.legal_id %>">SIN <%= c.legal_id %> - <%= c.first_name %> <%= c.last_name %></option>
@@ -69,22 +72,81 @@
 </section>
 
 <section class="card">
-  <h2>Current Bookings</h2>
+  <h2>Insert Payment</h2>
+  <form method="POST" action="/employee/payments" class="grid form-grid">
+    <label>Active Renting
+      <select name="renting_id" required>
+        <option value="">Choose</option>
+        <% activeRentings.filter(r => r.status === 'active').forEach(r => { %>
+          <option value="<%= r.renting_id %>">
+            #<%= r.renting_id %> Room <%= r.room_id %> / SIN <%= r.customer_sin %>
+          </option>
+        <% }) %>
+      </select>
+    </label>
+    <% if (adminNeedsEmployeeId) { %>
+      <label>Employee
+        <select name="employee_id" required>
+          <option value="">Choose</option>
+          <% employees.forEach(e => { %>
+            <option value="<%= e.employee_id %>">#<%= e.employee_id %> <%= e.first_name %> <%= e.last_name %></option>
+          <% }) %>
+        </select>
+      </label>
+    <% } else { %>
+      <span class="inline-note">Using signed-in employee ID.</span>
+    <% } %>
+    <label>Amount <input type="number" min="0.01" step="0.01" name="amount" required /></label>
+    <label>Payment Method
+      <select name="method" required>
+        <option value="cash">Cash</option>
+        <option value="card">Card</option>
+      </select>
+    </label>
+    <div class="actions"><button type="submit">Insert Payment</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Open Bookings (Overdue + Upcoming)</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
+      <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
       <% if (activeBookings.length === 0) { %>
-        <tr><td colspan="6" class="data-empty">No active bookings to display.</td></tr>
+        <tr><td colspan="7" class="data-empty">No open bookings found.</td></tr>
       <% } %>
       <% activeBookings.forEach(b => { %>
+        <% const bookingStartIso = b.start_date.toISOString().slice(0,10); %>
+        <% const bookingEndIso = b.end_date.toISOString().slice(0,10); %>
         <tr>
           <td><%= b.booking_id %></td>
           <td><%= b.room_id %></td>
           <td><%= b.customer_sin %></td>
-          <td><%= b.start_date.toISOString().slice(0,10) %></td>
-          <td><%= b.end_date.toISOString().slice(0,10) %></td>
+          <td><%= bookingStartIso %></td>
+          <td><%= bookingEndIso %></td>
           <td><span class="status-badge status-<%= b.status.replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
+          <td>
+            <div class="inline-form">
+              <% if ((b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso >= easternToday) { %>
+                <form method="POST" action="/employee/bookings/<%= b.booking_id %>/cancel?_method=PATCH">
+                  <button type="submit">Cancel</button>
+                </form>
+              <% } %>
+              <% if (b.status === 'reserved' && bookingEndIso >= easternToday) { %>
+                <form method="POST" action="/employee/bookings/<%= b.booking_id %>/dates?_method=PATCH" class="inline-form">
+                  <input type="date" name="start_date" value="<%= bookingStartIso %>" min="<%= easternToday %>" required />
+                  <input type="date" name="end_date" value="<%= bookingEndIso %>" required />
+                  <button type="submit">Update Dates</button>
+                </form>
+              <% } %>
+              <% if ((b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso < easternToday) { %>
+                <form method="POST" action="/employee/bookings/<%= b.booking_id %>/complete?_method=PATCH">
+                  <button type="submit">Mark Completed</button>
+                </form>
+              <% } %>
+            </div>
+          </td>
         </tr>
       <% }) %>
       </tbody>
@@ -93,13 +155,13 @@
 </section>
 
 <section class="card">
-  <h2>Current / Recent Rentings</h2>
+  <h2>Current / Upcoming Active Rentings</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Employee</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
       <tbody>
       <% if (activeRentings.length === 0) { %>
-        <tr><td colspan="8" class="data-empty">No rentings found.</td></tr>
+        <tr><td colspan="8" class="data-empty">No active rentings found.</td></tr>
       <% } %>
       <% activeRentings.forEach(r => { %>
         <tr>
@@ -123,5 +185,52 @@
     </table>
   </div>
 </section>
+
+<section class="card">
+  <h2>Recent Payments</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Payment ID</th><th>Renting</th><th>Room</th><th>Customer SIN</th><th>Employee</th><th>Amount</th><th>Method</th><th>Paid At</th></tr></thead>
+      <tbody>
+      <% if (!recentPayments || recentPayments.length === 0) { %>
+        <tr><td colspan="8" class="data-empty">No payments found.</td></tr>
+      <% } %>
+      <% (recentPayments || []).forEach(pay => { %>
+        <tr>
+          <td><%= pay.payment_id %></td>
+          <td><%= pay.renting_id %></td>
+          <td><%= pay.room_id %></td>
+          <td><%= pay.customer_sin %></td>
+          <td><%= pay.employee_id %></td>
+          <td>$<%= pay.amount %></td>
+          <td><%= pay.method === 'credit' ? 'card' : pay.method %></td>
+          <td><%= new Date(pay.paid_at).toISOString().slice(0,16).replace('T', ' ') %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  (function () {
+    const form = document.getElementById('directRentingForm');
+    if (!form) return;
+    const startInput = form.querySelector('input[name="start_date"]');
+    const endInput = form.querySelector('input[name="end_date"]');
+    if (!startInput || !endInput) return;
+
+    const syncEndDateRules = () => {
+      if (startInput.value) {
+        endInput.min = startInput.value;
+      } else {
+        endInput.removeAttribute('min');
+      }
+    };
+
+    startInput.addEventListener('change', syncEndDateRules);
+    syncEndDateRules();
+  })();
+</script>
 
 <%- include('partials/footer') %>

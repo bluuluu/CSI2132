@@ -56,7 +56,7 @@ CREATE TABLE person (
 CREATE TABLE customer (
   customer_id SERIAL PRIMARY KEY,
   person_id INT NOT NULL UNIQUE REFERENCES person(person_id) ON DELETE CASCADE,
-  hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE RESTRICT,
+  hotel_id INT REFERENCES hotel(hotel_id) ON DELETE SET NULL,
   registration_date DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
@@ -141,7 +141,6 @@ CREATE TABLE archive (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   final_status VARCHAR(20) NOT NULL,
-  amount_paid NUMERIC(10, 2),
   archived_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -262,7 +261,13 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fn_archive_booking()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.status IN ('completed', 'cancelled') THEN
+  IF NEW.status IN ('completed', 'cancelled')
+     AND NOT EXISTS (
+       SELECT 1
+       FROM archive a
+       WHERE a.record_type = 'booking'
+         AND a.source_booking_id = NEW.booking_id
+     ) THEN
     INSERT INTO archive (
       record_type,
       source_booking_id,
@@ -302,14 +307,14 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION fn_archive_renting()
 RETURNS TRIGGER AS $$
-DECLARE
-  total_paid NUMERIC(10,2);
 BEGIN
-  IF NEW.status IN ('completed', 'cancelled') THEN
-    SELECT COALESCE(SUM(amount), 0) INTO total_paid
-    FROM payment
-    WHERE renting_id = NEW.renting_id;
-
+  IF NEW.status IN ('completed', 'cancelled')
+     AND NOT EXISTS (
+       SELECT 1
+       FROM archive a
+       WHERE a.record_type = 'renting'
+         AND a.source_renting_id = NEW.renting_id
+     ) THEN
     INSERT INTO archive (
       record_type,
       source_booking_id,
@@ -321,8 +326,7 @@ BEGIN
       customer_legal_id,
       start_date,
       end_date,
-      final_status,
-      amount_paid
+      final_status
     )
     SELECT
       'renting',
@@ -335,8 +339,7 @@ BEGIN
       p.legal_id,
       NEW.start_date,
       NEW.end_date,
-      NEW.status,
-      total_paid
+      NEW.status
     FROM room rm
     JOIN hotel h ON h.hotel_id = rm.hotel_id
     JOIN hotel_chain hc ON hc.chain_id = h.chain_id
@@ -371,11 +374,101 @@ FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status)
 EXECUTE FUNCTION fn_archive_booking();
 
+CREATE TRIGGER trg_archive_booking_insert
+AFTER INSERT ON booking
+FOR EACH ROW
+WHEN (NEW.status IN ('completed', 'cancelled'))
+EXECUTE FUNCTION fn_archive_booking();
+
 CREATE TRIGGER trg_archive_renting
 AFTER UPDATE OF status ON renting
 FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status)
 EXECUTE FUNCTION fn_archive_renting();
+
+CREATE TRIGGER trg_archive_renting_insert
+AFTER INSERT ON renting
+FOR EACH ROW
+WHEN (NEW.status IN ('completed', 'cancelled'))
+EXECUTE FUNCTION fn_archive_renting();
+
+INSERT INTO archive (
+  record_type,
+  source_booking_id,
+  source_renting_id,
+  chain_name,
+  hotel_name,
+  room_number,
+  customer_full_name,
+  customer_legal_id,
+  start_date,
+  end_date,
+  final_status
+)
+SELECT
+  'booking',
+  b.booking_id,
+  NULL,
+  hc.chain_name,
+  h.hotel_name,
+  rm.room_number,
+  p.first_name || ' ' || p.last_name,
+  p.legal_id,
+  b.start_date,
+  b.end_date,
+  b.status
+FROM booking b
+JOIN room rm ON rm.room_id = b.room_id
+JOIN hotel h ON h.hotel_id = rm.hotel_id
+JOIN hotel_chain hc ON hc.chain_id = h.chain_id
+JOIN customer c ON c.customer_id = b.customer_id
+JOIN person p ON p.person_id = c.person_id
+WHERE b.status IN ('completed', 'cancelled')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM archive a
+    WHERE a.record_type = 'booking'
+      AND a.source_booking_id = b.booking_id
+  );
+
+INSERT INTO archive (
+  record_type,
+  source_booking_id,
+  source_renting_id,
+  chain_name,
+  hotel_name,
+  room_number,
+  customer_full_name,
+  customer_legal_id,
+  start_date,
+  end_date,
+  final_status
+)
+SELECT
+  'renting',
+  rt.source_booking_id,
+  rt.renting_id,
+  hc.chain_name,
+  h.hotel_name,
+  rm.room_number,
+  p.first_name || ' ' || p.last_name,
+  p.legal_id,
+  rt.start_date,
+  rt.end_date,
+  rt.status
+FROM renting rt
+JOIN room rm ON rm.room_id = rt.room_id
+JOIN hotel h ON h.hotel_id = rm.hotel_id
+JOIN hotel_chain hc ON hc.chain_id = h.chain_id
+JOIN customer c ON c.customer_id = rt.customer_id
+JOIN person p ON p.person_id = c.person_id
+WHERE rt.status IN ('completed', 'cancelled')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM archive a
+    WHERE a.record_type = 'renting'
+      AND a.source_renting_id = rt.renting_id
+  );
 
 CREATE INDEX idx_room_capacity_price_status ON room(capacity, base_price, current_status);
 CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, city, total_rooms);

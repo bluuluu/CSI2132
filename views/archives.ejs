@@ -1,0 +1,53 @@
+<%- include('partials/header', { title: 'Archive History', message }) %>
+
+<section class="page-intro">
+  <h2>Archive History</h2>
+  <p>Completed and cancelled bookings/rentings are stored here for historical traceability.</p>
+</section>
+
+<section class="card">
+  <h2>Archived Records</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Archive ID</th>
+          <th>Type</th>
+          <th>Source ID</th>
+          <th>Customer</th>
+          <th>Customer SIN</th>
+          <th>Chain</th>
+          <th>Hotel</th>
+          <th>Room #</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Final Status</th>
+          <th>Archived At</th>
+        </tr>
+      </thead>
+      <tbody>
+      <% if (!archives || archives.length === 0) { %>
+        <tr><td colspan="12" class="data-empty">No archived records found.</td></tr>
+      <% } %>
+      <% (archives || []).forEach(a => { %>
+        <tr>
+          <td><%= a.archive_id %></td>
+          <td><%= a.record_type %></td>
+          <td><%= a.record_type === 'booking' ? ('B#' + (a.source_booking_id || '-')) : ('R#' + (a.source_renting_id || '-')) %></td>
+          <td><%= a.customer_full_name %></td>
+          <td><%= a.customer_legal_id %></td>
+          <td><%= a.chain_name %></td>
+          <td><%= a.hotel_name %></td>
+          <td><%= a.room_number %></td>
+          <td><%= new Date(a.start_date).toISOString().slice(0,10) %></td>
+          <td><%= new Date(a.end_date).toISOString().slice(0,10) %></td>
+          <td><span class="status-badge status-<%= String(a.final_status || '').replace(/[^a-z_]/g, '_') %>"><%= a.final_status %></span></td>
+          <td><%= new Date(a.archived_at).toISOString().slice(0,16).replace('T', ' ') %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

@@ -1,7 +1,7 @@
 <%- include('../partials/header', { title: 'Manage Customers', message }) %>
-<% const canDeleteCustomers = auth.role === 'admin'; %>
+<% const canDeleteCustomers = ['employee', 'manager', 'admin'].includes(auth.role); %>
 <% const showAdminAccountDetails = auth.role === 'admin'; %>
-<% const customerColumnCount = showAdminAccountDetails ? 10 : 7; %>
+<% const customerColumnCount = showAdminAccountDetails ? (canDeleteCustomers ? 11 : 10) : (canDeleteCustomers ? 10 : 9); %>
 
 <section class="page-intro">
   <h2>Customer Records</h2>
@@ -44,18 +44,6 @@
       />
     </label>
     <label>Address <input name="address_line" maxlength="255" required /></label>
-    <label>Hotel
-      <select name="hotel_id" <%= canChooseHotel ? 'required' : 'disabled' %>>
-        <% hotels.forEach(h => { %>
-          <option value="<%= h.hotel_id %>" <%= Number(staffHotelId || 0) === Number(h.hotel_id) ? 'selected' : '' %>>
-            #<%= h.hotel_id %> <%= h.hotel_name %>
-          </option>
-        <% }) %>
-      </select>
-      <% if (!canChooseHotel) { %>
-        <input type="hidden" name="hotel_id" value="<%= staffHotelId %>" />
-      <% } %>
-    </label>
     <label>Registration Date <input type="date" name="registration_date" required /></label>
     <div class="actions"><button type="submit">Create</button></div>
   </form>
@@ -75,9 +63,10 @@
           <th>Registration</th>
           <% if (showAdminAccountDetails) { %>
             <th>Username</th>
-            <th>Account Status</th>
           <% } %>
+          <th>Account Status</th>
           <th>Update</th>
+          <th>Enable/Disable</th>
           <% if (canDeleteCustomers) { %><th>Delete</th><% } %>
         </tr>
       </thead>
@@ -89,22 +78,22 @@
           <tr>
             <td><%= c.legal_id %></td>
             <td><%= c.first_name %> <%= c.last_name %></td>
-            <td><%= c.hotel_name %></td>
+            <td><%= c.hotel_name || 'Unassigned' %></td>
             <td><%= c.email %></td>
             <td><%= c.phone %></td>
             <td><%= c.registration_date.toISOString().slice(0,10) %></td>
             <% if (showAdminAccountDetails) { %>
-              <td><%= c.username || 'not linked' %></td>
-              <td>
-                <% if (!c.account_id) { %>
-                  <span class="status-badge">missing</span>
-                <% } else { %>
-                  <span class="status-badge <%= c.is_active ? 'status-active' : 'status-cancelled' %>">
-                    <%= c.is_active ? 'active' : 'inactive' %>
-                  </span>
-                <% } %>
-              </td>
+              <td><%= c.username || `customer${c.customer_id}` %></td>
             <% } %>
+            <td>
+              <% if (!c.account_id) { %>
+                <span class="status-badge">missing</span>
+              <% } else { %>
+                <span class="status-badge <%= c.is_active ? 'status-active' : 'status-cancelled' %>">
+                  <%= c.is_active ? 'active' : 'inactive' %>
+                </span>
+              <% } %>
+            </td>
             <td>
               <form method="POST" action="/manage/customers/<%= c.customer_id %>?_method=PATCH" class="inline-form stack-small">
                 <input name="first_name" value="<%= c.first_name %>" maxlength="80" required />
@@ -122,18 +111,16 @@
                   required
                 />
                 <input name="address_line" value="<%= c.address_line %>" maxlength="255" required />
-                <select name="hotel_id" <%= canChooseHotel ? 'required' : 'disabled' %>>
-                  <% hotels.forEach(h => { %>
-                    <option value="<%= h.hotel_id %>" <%= Number(c.hotel_id) === Number(h.hotel_id) ? 'selected' : '' %>>
-                      #<%= h.hotel_id %> <%= h.hotel_name %>
-                    </option>
-                  <% }) %>
-                </select>
-                <% if (!canChooseHotel) { %>
-                  <input type="hidden" name="hotel_id" value="<%= c.hotel_id %>" />
-                <% } %>
                 <input type="date" name="registration_date" value="<%= c.registration_date.toISOString().slice(0,10) %>" required />
                 <button type="submit">Save</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="/manage/customers/<%= c.customer_id %>/account-status?_method=PATCH">
+                <input type="hidden" name="is_active" value="<%= c.is_active ? 'false' : 'true' %>" />
+                <button type="submit" class="<%= c.is_active ? 'danger' : '' %>">
+                  <%= c.is_active ? 'Disable' : 'Enable' %>
+                </button>
               </form>
             </td>
             <% if (canDeleteCustomers) { %>

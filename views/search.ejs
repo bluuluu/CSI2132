@@ -2,7 +2,7 @@
 
 <section class="page-intro">
   <h2>Room Search and Booking</h2>
-  <p>Staff can search room availability and create bookings by entering the customer's SIN.</p>
+  <p>Anyone can browse room inventory and availability. Logged-in customers can book for themselves; staff/admin can book for customers.</p>
 </section>
 
 <section class="card">
@@ -12,8 +12,8 @@
       <input
         type="date"
         name="start_date"
-        value="<%= filters.start_date || easternToday %>"
-        max="<%= easternToday %>"
+        value="<%= filters.start_date || '' %>"
+        min="<%= easternToday %>"
       />
     </label>
     <label>End Date <input type="date" name="end_date" value="<%= filters.end_date || '' %>" /></label>
@@ -49,6 +49,14 @@
         <% }) %>
       </select>
     </label>
+    <label>Current Status
+      <select name="current_status">
+        <option value="">Any</option>
+        <% ['available','booked','rented','maintenance'].forEach(status => { %>
+          <option value="<%= status %>" <%= filters.current_status === status ? 'selected' : '' %>><%= status %></option>
+        <% }) %>
+      </select>
+    </label>
     <label>Min Hotel Rooms <input type="number" min="1" name="total_rooms_min" value="<%= filters.total_rooms_min || '' %>" /></label>
     <label>Max Room Price <input type="number" min="1" step="0.01" name="max_price" value="<%= filters.max_price || '' %>" /></label>
     <div class="actions">
@@ -56,24 +64,26 @@
       <a href="/search" class="btn-secondary">Reset</a>
     </div>
   </form>
-  <p class="helper-line">Autosubmit is enabled for all criteria with a short delay.</p>
+  <p class="helper-line">Autosubmit is enabled. If you set dates, provide both start and end to filter true availability for that window.</p>
 </section>
 
 <section class="card">
-  <h2>Available Rooms (<%= rooms.length %>)</h2>
+  <h2>Rooms (<%= rooms.length %>)</h2>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
           <th>Room ID</th><th>Room #</th><th>Hotel</th><th>Chain</th><th>City</th><th>Category</th>
-          <th>Capacity</th><th>Price</th><th>Amenities</th><th>Book</th>
+          <th>Capacity</th><th>Price</th><th>Status</th><th>Amenities</th><th>Availability Calendar</th><th>Book</th>
         </tr>
       </thead>
       <tbody>
         <% if (rooms.length === 0) { %>
-          <tr><td colspan="10" class="data-empty">No available rooms for the current filter combination.</td></tr>
+          <tr><td colspan="12" class="data-empty">No rooms found for the current filter combination.</td></tr>
         <% } %>
         <% rooms.forEach(room => { %>
+          <% const unavailableRanges = unavailableRangesByRoom[String(room.room_id)] || []; %>
+          <% const nextUnavailable = unavailableRanges.length > 0 ? unavailableRanges[0] : null; %>
           <tr>
             <td><%= room.room_id %></td>
             <td><%= room.room_number %></td>
@@ -83,51 +93,96 @@
             <td><%= room.category %> star</td>
             <td><%= room.capacity %></td>
             <td>$<%= room.base_price %></td>
+            <td><span class="status-badge status-<%= (room.current_status || '').replace(/[^a-z_]/g, '_') %>"><%= room.current_status %></span></td>
             <td><%= room.amenities %></td>
             <td>
-              <form method="POST" action="/bookings" class="inline-form">
-                <input type="hidden" name="room_id" value="<%= room.room_id %>" />
-                <input
-                  name="customer_sin"
-                  type="tel"
-                  inputmode="numeric"
-                  pattern="\d{9}"
-                  minlength="9"
-                  maxlength="9"
-                  placeholder="Customer SIN (e.g. 111111111)"
-                  list="customerSinList"
-                  title="Enter a 9-digit SIN."
-                  required
-                />
-                <% if (auth.role === 'admin') { %>
-                  <input type="number" name="employee_id" placeholder="Employee ID" min="1" />
-                <% } %>
-                <input
-                  type="date"
-                  name="start_date"
-                  value="<%= easternToday %>"
-                  min="<%= easternToday %>"
-                  max="<%= easternToday %>"
-                  hidden
-                  required
-                />
-                <span class="inline-note">Start: <%= easternToday %> (Eastern)</span>
-                <input type="date" name="end_date" value="<%= filters.end_date || '' %>" required />
-                <button type="submit">Book</button>
-              </form>
+              <button
+                type="button"
+                class="btn-secondary availability-btn"
+                data-room-label="ID<%= room.room_id %> Room <%= room.room_number %> - <%= room.hotel_name %>"
+                data-ranges="<%= encodeURIComponent(JSON.stringify(unavailableRanges)) %>"
+              >
+                View Calendar
+              </button>
+              <% if (nextUnavailable) { %>
+                <div class="helper-line">Unavailable: <strong><%= nextUnavailable.start_date %></strong> to <strong><%= nextUnavailable.end_date %></strong></div>
+              <% } else { %>
+                <div class="helper-line">No blocked dates on record.</div>
+              <% } %>
+            </td>
+            <td>
+              <% if (canCreateBooking) { %>
+                <form method="POST" action="/bookings" class="inline-form">
+                  <input type="hidden" name="room_id" value="<%= room.room_id %>" />
+                  <% if (auth.role === 'customer') { %>
+                    <span class="inline-note">Booking as your customer account.</span>
+                  <% } else { %>
+                    <input
+                      name="customer_sin"
+                      type="tel"
+                      inputmode="numeric"
+                      pattern="\d{9}"
+                      minlength="9"
+                      maxlength="9"
+                      placeholder="Customer SIN (e.g. 111111111)"
+                      list="customerSinList"
+                      title="Enter a 9-digit SIN."
+                      required
+                    />
+                  <% } %>
+                  <% if (auth.role === 'admin') { %>
+                    <input type="number" name="employee_id" placeholder="Employee ID" min="1" />
+                  <% } %>
+                  <input
+                    type="date"
+                    name="start_date"
+                    value="<%= filters.start_date || easternToday %>"
+                    min="<%= easternToday %>"
+                    required
+                  />
+                  <input
+                    type="date"
+                    name="end_date"
+                    value="<%= filters.end_date || '' %>"
+                    min="<%= filters.start_date || easternToday %>"
+                    required
+                  />
+                  <button type="submit">Book</button>
+                </form>
+              <% } else { %>
+                <span class="inline-note">Login required to book, or ask staff to help with booking.</span>
+              <% } %>
             </td>
           </tr>
         <% }) %>
       </tbody>
     </table>
   </div>
-  <datalist id="customerSinList">
-    <% customers.forEach(c => { %>
-      <option value="<%= c.legal_id %>">SIN <%= c.legal_id %></option>
-    <% }) %>
-  </datalist>
-  <p class="helper-line">Start date is fixed to today's Eastern date: <strong><%= easternToday %></strong>.</p>
+  <% if (canCreateBooking && auth.role !== 'customer') { %>
+    <datalist id="customerSinList">
+      <% customers.forEach(c => { %>
+        <option value="<%= c.legal_id %>">SIN <%= c.legal_id %></option>
+      <% }) %>
+    </datalist>
+  <% } %>
+  <p class="helper-line">Bookings can start on <strong><%= easternToday %></strong> (Eastern) or any future date. Past start dates are blocked.</p>
 </section>
+
+<div id="availabilityModal" class="availability-modal" hidden>
+  <div class="availability-panel">
+    <div class="availability-header">
+      <h3 id="availabilityTitle">Room Availability</h3>
+      <button type="button" class="btn-secondary" id="availabilityClose">Close</button>
+    </div>
+    <p class="helper-line">Red dates are unavailable because of active rentings or reserved bookings.</p>
+    <div class="availability-legend">
+      <span class="legend-item legend-available">Available</span>
+      <span class="legend-item legend-unavailable">Unavailable</span>
+    </div>
+    <div id="availabilityCalendar" class="availability-calendar-grid"></div>
+    <div id="availabilityRanges" class="helper-line"></div>
+  </div>
+</div>
 
 <script>
   (function () {
@@ -145,6 +200,151 @@
         el.addEventListener('input', triggerSubmit);
       } else {
         el.addEventListener('change', triggerSubmit);
+      }
+    });
+
+    const modal = document.getElementById('availabilityModal');
+    const modalTitle = document.getElementById('availabilityTitle');
+    const modalCalendar = document.getElementById('availabilityCalendar');
+    const modalRanges = document.getElementById('availabilityRanges');
+    const closeButton = document.getElementById('availabilityClose');
+    if (!modal || !modalTitle || !modalCalendar || !modalRanges || !closeButton) return;
+
+    const monthFormatter = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const labelFormatter = new Intl.DateTimeFormat('en-CA', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' });
+    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const toUtcDate = (isoDate) => {
+      const [year, month, day] = String(isoDate).split('-').map(Number);
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const toIsoDate = (date) => {
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const buildUnavailableSet = (ranges, horizonDays = 220) => {
+      const unavailable = new Set();
+      const today = toUtcDate('<%= easternToday %>');
+      const horizon = new Date(today.getTime());
+      horizon.setUTCDate(horizon.getUTCDate() + horizonDays);
+
+      ranges.forEach((range) => {
+        const start = toUtcDate(range.start_date);
+        const end = toUtcDate(range.end_date);
+        let cursor = start > today ? start : new Date(today.getTime());
+        while (cursor <= end && cursor <= horizon) {
+          unavailable.add(toIsoDate(cursor));
+          cursor = new Date(cursor.getTime());
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+      });
+      return unavailable;
+    };
+
+    const createMonthCard = (year, monthIndex, unavailableSet) => {
+      const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+      const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      const firstWeekday = monthStart.getUTCDay();
+
+      const card = document.createElement('article');
+      card.className = 'calendar-month';
+      const title = document.createElement('h4');
+      title.textContent = monthFormatter.format(monthStart);
+      card.appendChild(title);
+
+      const weekdays = document.createElement('div');
+      weekdays.className = 'calendar-weekdays';
+      weekdayLabels.forEach((label) => {
+        const cell = document.createElement('span');
+        cell.textContent = label;
+        weekdays.appendChild(cell);
+      });
+      card.appendChild(weekdays);
+
+      const grid = document.createElement('div');
+      grid.className = 'calendar-days';
+      for (let i = 0; i < firstWeekday; i += 1) {
+        const pad = document.createElement('span');
+        pad.className = 'calendar-day empty';
+        grid.appendChild(pad);
+      }
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(Date.UTC(year, monthIndex, day));
+        const iso = toIsoDate(date);
+        const cell = document.createElement('span');
+        cell.className = `calendar-day ${unavailableSet.has(iso) ? 'unavailable' : 'available'}`;
+        cell.textContent = String(day);
+        cell.title = `${labelFormatter.format(date)} - ${unavailableSet.has(iso) ? 'Unavailable' : 'Available'}`;
+        grid.appendChild(cell);
+      }
+
+      card.appendChild(grid);
+      return card;
+    };
+
+    const renderCalendar = (roomLabel, ranges) => {
+      modalTitle.textContent = `${roomLabel} Availability`;
+      modalCalendar.innerHTML = '';
+      modalRanges.innerHTML = '';
+
+      const unavailableSet = buildUnavailableSet(ranges);
+      const start = toUtcDate('<%= easternToday %>');
+      const startMonth = start.getUTCMonth();
+      const startYear = start.getUTCFullYear();
+      const monthsToRender = 6;
+
+      for (let offset = 0; offset < monthsToRender; offset += 1) {
+        const monthDate = new Date(Date.UTC(startYear, startMonth + offset, 1));
+        modalCalendar.appendChild(
+          createMonthCard(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), unavailableSet)
+        );
+      }
+
+      if (!ranges.length) {
+        modalRanges.textContent = 'No unavailable date ranges recorded for the upcoming months.';
+      } else {
+        const formatted = ranges.map((range) => `${range.start_date} to ${range.end_date} (${range.source_type})`);
+        modalRanges.textContent = `Unavailable ranges: ${formatted.join(' | ')}`;
+      }
+    };
+
+    const openModal = (roomLabel, ranges) => {
+      renderCalendar(roomLabel, ranges);
+      modal.hidden = false;
+    };
+
+    const closeModal = () => {
+      modal.hidden = true;
+    };
+
+    document.querySelectorAll('.availability-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        const roomLabel = button.dataset.roomLabel || 'Room';
+        const rawRanges = button.dataset.ranges || '';
+        let ranges = [];
+        try {
+          ranges = JSON.parse(decodeURIComponent(rawRanges));
+        } catch (err) {
+          ranges = [];
+        }
+        openModal(roomLabel, ranges);
+      });
+    });
+
+    closeButton.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !modal.hidden) {
+        closeModal();
       }
     });
   })();

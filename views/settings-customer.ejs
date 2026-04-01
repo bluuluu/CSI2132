@@ -35,10 +35,24 @@
 
 <section class="card">
   <h2>Account Status</h2>
-  <p class="muted">Disabling your account signs you out immediately. To return, contact an employee for reactivation.</p>
+  <p class="muted">Disabling signs you out immediately. You cannot self-disable while you have an active renting or reserved booking.</p>
   <form method="POST" action="/settings/customer/deactivate?_method=PATCH">
-    <button type="submit" class="danger">Disable My Account</button>
+    <button type="submit" class="danger" <%= hasOpenStays ? 'disabled' : '' %>>Disable My Account</button>
   </form>
+  <% if (hasOpenStays) { %>
+    <p class="helper-line">Action blocked: you currently have an active renting or reserved booking. Ask staff for help.</p>
+  <% } %>
+</section>
+
+<section class="card">
+  <h2>Delete Account</h2>
+  <p class="muted">Deleting removes your profile and login account. This is blocked while you have an active renting or reserved booking.</p>
+  <form method="POST" action="/settings/customer/delete?_method=DELETE">
+    <button type="submit" class="danger" <%= hasOpenStays ? 'disabled' : '' %>>Delete My Account</button>
+  </form>
+  <% if (hasOpenStays) { %>
+    <p class="helper-line">Action blocked: wait until the booking/renting is finished, or ask staff to perform the account action.</p>
+  <% } %>
 </section>
 
 <%- include('partials/footer') %>

@@ -21,8 +21,13 @@
           <% if (isAuthenticated) { %>
             <a href="/" data-nav>Home</a>
             <a href="/search" data-nav>Browse Rooms</a>
+            <% if (role === 'customer') { %>
+              <a href="/customer/bookings" data-nav>My Bookings</a>
+              <a href="/settings/customer" data-nav>Settings</a>
+            <% } %>
             <% if (['employee', 'manager', 'admin'].includes(role)) { %>
               <a href="/employee" data-nav>Employee Panel</a>
+              <a href="/archives" data-nav>Archives</a>
               <a href="/manage/customers" data-nav>Customers</a>
             <% } %>
             <% if (['manager', 'admin'].includes(role)) { %>
@@ -34,6 +39,8 @@
               <a href="/manage/rooms" data-nav>Rooms CRUD</a>
             <% } %>
           <% } else { %>
+            <a href="/search" data-nav>Browse Rooms</a>
+            <a href="/signup/customer" data-nav>Sign Up</a>
             <a href="/login" data-nav>Login</a>
           <% } %>
         </nav>

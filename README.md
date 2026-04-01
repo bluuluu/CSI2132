@@ -91,8 +91,9 @@ Keep this terminal running while using the app.
 
 ## Role-Based Login
 
-The app now uses staff-only login pages:
+The app uses role-based login pages:
 
+- `/login/customer`
 - `/login/employee`
 - `/login/admin`
 
@@ -101,6 +102,10 @@ You can also start from `/login` and choose a role card.
 ### Login Info
 
 - Admin: `admin` / `admin123`
+- Customer login uses SIN + password:
+  - Example SIN: `200000001`
+  - Default seeded password format: `customer<ID>123`
+  - Example for `customer_id=1`: `customer1123`
 - Manager accounts (seeded): `manager<ID>` / `manager<ID>123`  
   Example: `manager1` / `manager1123`  
   Use the staff login page: `/login/employee`
@@ -110,25 +115,37 @@ You can also start from `/login` and choose a role card.
 ### Access Differences
 
 - Public (not signed in):
-  - Can access login page only
-  - Operational pages require staff/admin authentication
+  - Can browse rooms and availability status from `/search`
+  - Can open customer sign-up from `/signup/customer`
+  - Cannot create bookings/rentings or access management pages
+- Customer:
+  - Can sign in using SIN + password
+  - Can browse rooms and create bookings for their own account
+  - Can self-disable or self-delete only when no active renting/reserved booking exists
+  - Cannot create rentings or manage DB records
 - Employee:
   - Can register customers at the desk using SIN (9 digits)
   - Can create bookings and direct rentings for registered customers by entering customer SIN
-  - Can only book/rent for customers registered at the same hotel and for rooms in that hotel
-  - Booking start date is fixed to today's Eastern date
+  - Can only book/rent rooms at their own hotel; unassigned customers are attached to that hotel on first booking/renting
+  - Booking start date can be today or any future date (Eastern)
   - Can run check-in and direct renting workflows
+  - Can insert renting payments through the Employee Panel (cash/card)
+  - Can enable/disable customer accounts for customers in the same hotel
+  - Can delete customer records for customers in the same hotel (or unassigned customers)
   - Cannot manage staff accounts, SQL views, or hotel/room admin CRUD pages
 - Manager:
   - Includes all employee capabilities
   - Can view employees assigned to the same hotel
   - Can create new employee accounts for the same hotel
   - Can enable/disable employee accounts for the same hotel
+  - Can enable/disable customer accounts for the same hotel
+  - Can delete customer records for customers in the same hotel (or unassigned customers)
   - Cannot access admin-only CRUD or SQL views
 - Admin:
   - Full access to all workflows
   - Can create customers, employees, and managers
-  - Can enable/disable both employee and manager accounts
+  - Can enable/disable employee, manager, and customer accounts
+  - Can delete customer, employee, and manager records
   - Can view full account details (including SIN and login status) for employees, managers, and customers
   - Can manage hotels/rooms/customers and SQL views
 
@@ -139,18 +156,27 @@ You can also start from `/login` and choose a role card.
 - Room search with multi-criteria filters:
   - dates, room capacity, area, hotel chain, category, total rooms, and price
   - employee/manager search is scoped to their assigned hotel
-- Staff-only authenticated booking flow
-- Role-based login for employee/manager/admin portals and permission controls
+- Public room browsing plus authenticated booking flow (customer/staff/admin)
+- Role-based login for customer/employee(manager)/admin portals and permission controls
 - DB-backed login accounts (`auth_account`) for admin, manager, employee, and customer
 - Employee panel:
   - booking -> renting transformation
   - direct renting creation
+  - payment insertion for active rentings (cash/card UI)
+- Dedicated `/archives` page for completed/cancelled booking and renting history (customer, hotel, room, date, and status)
 - Front-desk customer registration by SIN
+- Customer self-signup (`/signup/customer`) with SIN-based login
 - DB-level SIN enforcement for all people (customers, employees, managers): `id_type='SIN'` and exactly 9 digits
-- Customers are assigned to a hotel, and staff workflows enforce same-hotel booking/renting
+- Customers can exist unassigned (`hotel_id` NULL) and are attached to a hotel on first booking/renting
 - Baseline data guarantees at least 5 rooms per hotel, at least 1 manager per hotel, and at least 1 employee per hotel
 - Staff management enforces up to 3 employees and 1 manager per hotel
-- Admin staff account management with enable/disable workflows (no destructive staff deletion)
+- Account status workflows:
+  - admin can enable/disable employee, manager, and customer accounts
+  - manager can enable/disable employee and customer accounts in their hotel
+  - employee can enable/disable customer accounts in their hotel
+- Staff deletion:
+  - admin can fully delete employee or manager records
+  - manager can fully delete employee records in their hotel
 - CRUD pages for customers (staff/admin), and hotels/rooms (admin)
 - Required SQL Views displayed in UI
 - Triggers for overlap prevention, room status synchronization, and archiving
@@ -159,4 +185,6 @@ You can also start from `/login` and choose a role card.
 ## Notes
 
 - Archive records are stored without hard foreign keys to mutable entities so they remain available even if rooms/customers are deleted later.
+- Archive history intentionally excludes payment-history fields (per rubric requirement).
+- Customer self-disable and self-delete are blocked while active/reserved stays exist; staff can still manage customer account status from their panel.
 - The UI is intentionally form-driven to match project rubric requirements for non-SQL users.
