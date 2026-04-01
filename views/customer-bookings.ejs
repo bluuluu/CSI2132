@@ -11,7 +11,7 @@
     <table>
       <thead>
         <tr>
-          <th>Booking ID</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Booking Status</th><th>Linked Renting</th><th>Action</th>
+          <th>Booking ID</th><th>Hotel</th><th>Location</th><th>Room</th><th>Start</th><th>End</th><th>Booking Status</th><th>Linked Renting</th><th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -19,13 +19,15 @@
           <tr><td colspan="9" class="data-empty">You have no bookings yet.</td></tr>
         <% } %>
         <% (bookings || []).forEach(b => { %>
+          <% const bookingStartIso = b.start_date.toISOString().slice(0,10); %>
+          <% const bookingEndIso = b.end_date.toISOString().slice(0,10); %>
           <tr>
             <td><%= b.booking_id %></td>
             <td><%= b.hotel_name %></td>
-            <td><%= b.city %></td>
+            <td><%= b.hotel_location %></td>
             <td>#<%= b.room_id %> (<%= b.room_number %>)</td>
-            <td><%= b.start_date.toISOString().slice(0,10) %></td>
-            <td><%= b.end_date.toISOString().slice(0,10) %></td>
+            <td><%= bookingStartIso %></td>
+            <td><%= bookingEndIso %></td>
             <td><span class="status-badge status-<%= String(b.status || '').replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
             <td>
               <% if (b.linked_renting_id) { %>
@@ -36,7 +38,7 @@
               <% } %>
             </td>
             <td>
-              <% if (b.status === 'reserved') { %>
+              <% if (b.status === 'reserved' && bookingEndIso >= easternToday) { %>
                 <form method="POST" action="/customer/bookings/<%= b.booking_id %>/cancel?_method=PATCH">
                   <button type="submit">Cancel</button>
                 </form>
@@ -57,7 +59,7 @@
     <table>
       <thead>
         <tr>
-          <th>Renting ID</th><th>Source Booking</th><th>Hotel</th><th>City</th><th>Room</th><th>Start</th><th>End</th><th>Status</th>
+          <th>Renting ID</th><th>Source Booking</th><th>Hotel</th><th>Location</th><th>Room</th><th>Start</th><th>End</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
@@ -69,7 +71,7 @@
             <td><%= r.renting_id %></td>
             <td><%= r.source_booking_id ? ('#' + r.source_booking_id) : 'Walk-in / direct' %></td>
             <td><%= r.hotel_name %></td>
-            <td><%= r.city %></td>
+            <td><%= r.hotel_location %></td>
             <td>#<%= r.room_id %> (<%= r.room_number %>)</td>
             <td><%= r.start_date.toISOString().slice(0,10) %></td>
             <td><%= r.end_date.toISOString().slice(0,10) %></td>

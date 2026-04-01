@@ -255,7 +255,6 @@ function emptyAuthState() {
     displayName: null,
     customerId: null,
     employeeId: null,
-    personId: null,
     isActive: false
   };
 }
@@ -270,8 +269,7 @@ async function fetchAccountById(accountId) {
        a.is_active,
        a.employee_id,
        a.customer_id,
-       cp.legal_id,
-       COALESCE(ep.person_id, cp.person_id) AS person_id,
+       COALESCE(ep.legal_id, cp.legal_id) AS legal_id,
        COALESCE(
          ep.first_name || ' ' || ep.last_name,
          cp.first_name || ' ' || cp.last_name,
@@ -279,9 +277,9 @@ async function fetchAccountById(accountId) {
        ) AS display_name
      FROM auth_account a
      LEFT JOIN employee e ON e.employee_id = a.employee_id
-     LEFT JOIN person ep ON ep.person_id = e.person_id
+     LEFT JOIN person ep ON ep.legal_id = e.legal_id
      LEFT JOIN customer c ON c.customer_id = a.customer_id
-     LEFT JOIN person cp ON cp.person_id = c.person_id
+     LEFT JOIN person cp ON cp.legal_id = c.legal_id
      WHERE a.account_id = $1`,
     [accountId]
   );
@@ -299,8 +297,7 @@ async function fetchAccountByRoleAndUsername(role, username) {
        a.is_active,
        a.employee_id,
        a.customer_id,
-       cp.legal_id,
-       COALESCE(ep.person_id, cp.person_id) AS person_id,
+       COALESCE(ep.legal_id, cp.legal_id) AS legal_id,
        COALESCE(
          ep.first_name || ' ' || ep.last_name,
          cp.first_name || ' ' || cp.last_name,
@@ -308,9 +305,9 @@ async function fetchAccountByRoleAndUsername(role, username) {
        ) AS display_name
      FROM auth_account a
      LEFT JOIN employee e ON e.employee_id = a.employee_id
-     LEFT JOIN person ep ON ep.person_id = e.person_id
+     LEFT JOIN person ep ON ep.legal_id = e.legal_id
      LEFT JOIN customer c ON c.customer_id = a.customer_id
-     LEFT JOIN person cp ON cp.person_id = c.person_id
+     LEFT JOIN person cp ON cp.legal_id = c.legal_id
      WHERE a.role = $1 AND lower(a.username) = lower($2)
      LIMIT 1`,
     [role, username]
@@ -329,8 +326,7 @@ async function fetchStaffAccountByUsername(username) {
        a.is_active,
        a.employee_id,
        a.customer_id,
-       cp.legal_id,
-       COALESCE(ep.person_id, cp.person_id) AS person_id,
+       COALESCE(ep.legal_id, cp.legal_id) AS legal_id,
        COALESCE(
          ep.first_name || ' ' || ep.last_name,
          cp.first_name || ' ' || cp.last_name,
@@ -338,9 +334,9 @@ async function fetchStaffAccountByUsername(username) {
        ) AS display_name
      FROM auth_account a
      LEFT JOIN employee e ON e.employee_id = a.employee_id
-     LEFT JOIN person ep ON ep.person_id = e.person_id
+     LEFT JOIN person ep ON ep.legal_id = e.legal_id
      LEFT JOIN customer c ON c.customer_id = a.customer_id
-     LEFT JOIN person cp ON cp.person_id = c.person_id
+     LEFT JOIN person cp ON cp.legal_id = c.legal_id
      WHERE a.role IN ('employee', 'manager') AND lower(a.username) = lower($1)
      LIMIT 1`,
     [username]
@@ -359,12 +355,11 @@ async function fetchCustomerAccountBySin(sin) {
        a.is_active,
        a.employee_id,
        a.customer_id,
-       p.legal_id,
-       p.person_id,
+       p.legal_id AS legal_id,
        p.first_name || ' ' || p.last_name AS display_name
      FROM auth_account a
      JOIN customer c ON c.customer_id = a.customer_id
-     JOIN person p ON p.person_id = c.person_id
+     JOIN person p ON p.legal_id = c.legal_id
      WHERE a.role = 'customer'
        AND p.legal_id = $1
      LIMIT 1`,
@@ -383,7 +378,6 @@ function mapAccountToAuth(account) {
     displayName: account.display_name,
     customerId: account.customer_id,
     employeeId: account.employee_id,
-    personId: account.person_id,
     isActive: account.is_active
   };
 }
@@ -441,7 +435,7 @@ async function archiveCustomerHistory(client, customerId) {
      JOIN hotel h ON h.hotel_id = rm.hotel_id
      JOIN hotel_chain hc ON hc.chain_id = h.chain_id
      JOIN customer c ON c.customer_id = b.customer_id
-     JOIN person p ON p.person_id = c.person_id
+     JOIN person p ON p.legal_id = c.legal_id
      WHERE b.customer_id = $1
        AND NOT EXISTS (
          SELECT 1
@@ -483,7 +477,7 @@ async function archiveCustomerHistory(client, customerId) {
      JOIN hotel h ON h.hotel_id = rm.hotel_id
      JOIN hotel_chain hc ON hc.chain_id = h.chain_id
      JOIN customer c ON c.customer_id = rt.customer_id
-     JOIN person p ON p.person_id = c.person_id
+     JOIN person p ON p.legal_id = c.legal_id
      WHERE rt.customer_id = $1
        AND NOT EXISTS (
          SELECT 1
@@ -532,6 +526,26 @@ async function ensurePersonSinSchemaAndData() {
     return;
   }
 
+  const personColumnsResult = await db.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'person'`
+  );
+  const personColumns = new Set(personColumnsResult.rows.map((row) => row.column_name));
+
+  if (!personColumns.has('legal_id') && personColumns.has('sin')) {
+    await db.query(`ALTER TABLE person RENAME COLUMN sin TO legal_id`);
+    personColumns.add('legal_id');
+    personColumns.delete('sin');
+  }
+  if (!personColumns.has('legal_id')) {
+    throw new Error('Person table is missing legal_id and cannot be migrated automatically.');
+  }
+
+  const hasLegacyPersonId = personColumns.has('person_id');
+  const orderingColumn = hasLegacyPersonId ? 'person_id' : 'legal_id';
+
+  // Normalize invalid/duplicate legal_id values to generated 9-digit SIN-like values.
   await db.query(`
     WITH valid_sins AS (
       SELECT legal_id::BIGINT AS sin_value
@@ -542,17 +556,24 @@ async function ensurePersonSinSchemaAndData() {
       SELECT COALESCE(MAX(sin_value), 100000000) AS max_sin
       FROM valid_sins
     ),
-    invalid_people AS (
+    ranked AS (
       SELECT
-        person_id,
-        row_number() OVER (ORDER BY person_id) AS rn
+        ctid AS row_ref,
+        legal_id,
+        row_number() OVER (PARTITION BY legal_id ORDER BY ${orderingColumn}) AS duplicate_rank
       FROM person
-      WHERE legal_id !~ '^[0-9]{9}$'
+    ),
+    rows_to_fix AS (
+      SELECT
+        row_ref,
+        row_number() OVER (ORDER BY legal_id, row_ref) AS rn
+      FROM ranked
+      WHERE legal_id !~ '^[0-9]{9}$' OR duplicate_rank > 1
     )
     UPDATE person p
-    SET legal_id = LPAD(((SELECT max_sin FROM base) + invalid_people.rn)::TEXT, 9, '0')
-    FROM invalid_people
-    WHERE p.person_id = invalid_people.person_id
+    SET legal_id = LPAD(((SELECT max_sin FROM base) + rows_to_fix.rn)::TEXT, 9, '0')
+    FROM rows_to_fix
+    WHERE p.ctid = rows_to_fix.row_ref
   `);
 
   await db.query(`UPDATE person SET id_type = 'SIN' WHERE id_type <> 'SIN'`);
@@ -561,6 +582,85 @@ async function ensurePersonSinSchemaAndData() {
   await db.query(`ALTER TABLE person ALTER COLUMN legal_id TYPE VARCHAR(9)`);
   await db.query(`ALTER TABLE person ADD CONSTRAINT person_id_type_check CHECK (id_type = 'SIN')`);
   await db.query(`ALTER TABLE person ADD CONSTRAINT person_legal_id_sin_format_check CHECK (legal_id ~ '^[0-9]{9}$')`);
+
+  const migrateReferenceTableToLegalId = async (tableName) => {
+    const tableResult = await db.query(`SELECT to_regclass('public.${tableName}') AS table_name`);
+    if (!tableResult.rows[0].table_name) {
+      return;
+    }
+
+    const columnsResult = await db.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1`,
+      [tableName]
+    );
+    const columns = new Set(columnsResult.rows.map((row) => row.column_name));
+    const hasLegalId = columns.has('legal_id');
+    const hasPersonId = columns.has('person_id');
+
+    if (!hasLegalId) {
+      await db.query(`ALTER TABLE ${tableName} ADD COLUMN legal_id VARCHAR(9)`);
+    }
+
+    if (hasPersonId && hasLegacyPersonId) {
+      await db.query(`
+        UPDATE ${tableName} t
+        SET legal_id = p.legal_id
+        FROM person p
+        WHERE t.person_id = p.person_id
+          AND t.legal_id IS NULL
+      `);
+    }
+
+    const missing = await db.query(
+      `SELECT COUNT(*)::INT AS missing_count
+       FROM ${tableName}
+       WHERE legal_id IS NULL`
+    );
+    if (missing.rows[0].missing_count > 0) {
+      throw new Error(`Cannot migrate ${tableName}: rows with NULL legal_id were found.`);
+    }
+
+    await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_person_id_fkey`);
+    await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_legal_id_fkey`);
+    await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_legal_id_key`);
+    await db.query(`ALTER TABLE ${tableName} ALTER COLUMN legal_id TYPE VARCHAR(9)`);
+    await db.query(`ALTER TABLE ${tableName} ALTER COLUMN legal_id SET NOT NULL`);
+    await db.query(`ALTER TABLE ${tableName} ADD CONSTRAINT ${tableName}_legal_id_key UNIQUE (legal_id)`);
+    if (hasPersonId) {
+      await db.query(`ALTER TABLE ${tableName} DROP COLUMN person_id`);
+    }
+  };
+
+  await migrateReferenceTableToLegalId('customer');
+  await migrateReferenceTableToLegalId('employee');
+
+  await db.query(`ALTER TABLE person DROP CONSTRAINT IF EXISTS person_pkey`);
+  await db.query(`ALTER TABLE person DROP CONSTRAINT IF EXISTS person_legal_id_key`);
+  await db.query(`ALTER TABLE person DROP CONSTRAINT IF EXISTS person_person_id_key`);
+  await db.query(`ALTER TABLE person ALTER COLUMN legal_id SET NOT NULL`);
+  await db.query(`ALTER TABLE person ADD CONSTRAINT person_pkey PRIMARY KEY (legal_id)`);
+  if (hasLegacyPersonId) {
+    await db.query(`ALTER TABLE person DROP COLUMN person_id`);
+  }
+
+  const customerTable = await db.query("SELECT to_regclass('public.customer') AS table_name");
+  if (customerTable.rows[0].table_name) {
+    await db.query(`
+      ALTER TABLE customer
+      ADD CONSTRAINT customer_legal_id_fkey
+      FOREIGN KEY (legal_id) REFERENCES person(legal_id) ON DELETE CASCADE
+    `);
+  }
+  const employeeTable = await db.query("SELECT to_regclass('public.employee') AS table_name");
+  if (employeeTable.rows[0].table_name) {
+    await db.query(`
+      ALTER TABLE employee
+      ADD CONSTRAINT employee_legal_id_fkey
+      FOREIGN KEY (legal_id) REFERENCES person(legal_id) ON DELETE CASCADE
+    `);
+  }
 }
 
 async function ensureCustomerHotelSchemaAndData() {
@@ -613,6 +713,57 @@ async function ensureCustomerHotelSchemaAndData() {
   await db.query(`CREATE INDEX IF NOT EXISTS idx_customer_hotel_id ON customer(hotel_id)`);
 }
 
+async function ensureHotelSchemaWithoutGeoColumns() {
+  const hotelTable = await db.query("SELECT to_regclass('public.hotel') AS table_name");
+  if (!hotelTable.rows[0].table_name) {
+    return;
+  }
+
+  await db.query(`DROP VIEW IF EXISTS v_hotel_capacity_aggregate CASCADE`);
+  await db.query(`DROP VIEW IF EXISTS v_available_rooms_per_area CASCADE`);
+
+  await db.query(`ALTER TABLE hotel DROP COLUMN IF EXISTS city`);
+  await db.query(`ALTER TABLE hotel DROP COLUMN IF EXISTS state_province`);
+  await db.query(`ALTER TABLE hotel DROP COLUMN IF EXISTS country`);
+  await db.query(`ALTER TABLE hotel DROP COLUMN IF EXISTS postal_code`);
+
+  await db.query(`DROP INDEX IF EXISTS idx_hotel_filtering`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_hotel_filtering ON hotel(chain_id, category, total_rooms)`);
+
+  await db.query(`
+    CREATE OR REPLACE VIEW v_available_rooms_per_area AS
+    SELECT
+      COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line) AS area,
+      COUNT(*)::INT AS available_rooms
+    FROM room r
+    JOIN hotel h ON h.hotel_id = r.hotel_id
+    WHERE r.current_status = 'available'
+    GROUP BY COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line)
+    ORDER BY area
+  `);
+
+  await db.query(`
+    CREATE OR REPLACE VIEW v_hotel_capacity_aggregate AS
+    SELECT
+      h.hotel_id,
+      h.hotel_name,
+      h.address_line,
+      SUM(
+        CASE r.capacity
+          WHEN 'single' THEN 1
+          WHEN 'double' THEN 2
+          WHEN 'suite' THEN 3
+          WHEN 'family' THEN 4
+          ELSE 0
+        END
+      )::INT AS aggregated_capacity
+    FROM hotel h
+    JOIN room r ON r.hotel_id = h.hotel_id
+    GROUP BY h.hotel_id, h.hotel_name, h.address_line
+    ORDER BY h.hotel_id
+  `);
+}
+
 async function ensureArchiveSchemaAndData() {
   const archiveTable = await db.query("SELECT to_regclass('public.archive') AS table_name");
   if (!archiveTable.rows[0].table_name) {
@@ -661,7 +812,7 @@ async function ensureArchiveSchemaAndData() {
         JOIN hotel h ON h.hotel_id = rm.hotel_id
         JOIN hotel_chain hc ON hc.chain_id = h.chain_id
         JOIN customer c ON c.customer_id = NEW.customer_id
-        JOIN person p ON p.person_id = c.person_id
+        JOIN person p ON p.legal_id = c.legal_id
         WHERE rm.room_id = NEW.room_id;
       END IF;
 
@@ -710,7 +861,7 @@ async function ensureArchiveSchemaAndData() {
         JOIN hotel h ON h.hotel_id = rm.hotel_id
         JOIN hotel_chain hc ON hc.chain_id = h.chain_id
         JOIN customer c ON c.customer_id = NEW.customer_id
-        JOIN person p ON p.person_id = c.person_id
+        JOIN person p ON p.legal_id = c.legal_id
         WHERE rm.room_id = NEW.room_id;
       END IF;
 
@@ -768,7 +919,7 @@ async function ensureArchiveSchemaAndData() {
     JOIN hotel h ON h.hotel_id = rm.hotel_id
     JOIN hotel_chain hc ON hc.chain_id = h.chain_id
     JOIN customer c ON c.customer_id = b.customer_id
-    JOIN person p ON p.person_id = c.person_id
+    JOIN person p ON p.legal_id = c.legal_id
     WHERE b.status IN ('completed', 'cancelled')
       AND NOT EXISTS (
         SELECT 1
@@ -809,7 +960,7 @@ async function ensureArchiveSchemaAndData() {
     JOIN hotel h ON h.hotel_id = rm.hotel_id
     JOIN hotel_chain hc ON hc.chain_id = h.chain_id
     JOIN customer c ON c.customer_id = rt.customer_id
-    JOIN person p ON p.person_id = c.person_id
+    JOIN person p ON p.legal_id = c.legal_id
     WHERE rt.status IN ('completed', 'cancelled')
       AND NOT EXISTS (
         SELECT 1
@@ -915,14 +1066,14 @@ async function ensureHotelCoverageBaseline() {
       const person = await db.query(
         `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
          VALUES ($1, 'SIN', $2, $3, $4, $5, $6)
-         RETURNING person_id`,
+         RETURNING legal_id`,
         [sin, firstName, lastName, email, phone, address]
       );
 
       await db.query(
-        `INSERT INTO employee (person_id, hotel_id, role_title, hired_on, is_manager)
+        `INSERT INTO employee (legal_id, hotel_id, role_title, hired_on, is_manager)
          VALUES ($1, $2, $3, CURRENT_DATE, $4)`,
-        [person.rows[0].person_id, hotelId, isManager ? 'Manager' : 'Guest Services Agent', isManager]
+        [person.rows[0].legal_id, hotelId, isManager ? 'Manager' : 'Guest Services Agent', isManager]
       );
     };
 
@@ -933,6 +1084,165 @@ async function ensureHotelCoverageBaseline() {
       await createStaff(false);
     }
   }
+}
+
+async function ensureRoomCompatibilitySchemaAndData() {
+  const roomTable = await db.query("SELECT to_regclass('public.room') AS table_name");
+  if (!roomTable.rows[0].table_name) {
+    return;
+  }
+
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS hotel_room_id INT`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS room_capacity VARCHAR(20)`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS price NUMERIC(10, 2)`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS view VARCHAR(20)`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS status VARCHAR(20)`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS extendable BOOLEAN`);
+  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS problems TEXT`);
+
+  await db.query(`
+    UPDATE room
+    SET
+      hotel_room_id = hotel_id,
+      room_capacity = capacity,
+      price = base_price,
+      view = CASE
+        WHEN has_sea_view AND has_mountain_view THEN 'sea_mountain'
+        WHEN has_sea_view THEN 'sea'
+        WHEN has_mountain_view THEN 'mountain'
+        ELSE 'city'
+      END,
+      status = current_status,
+      extendable = is_extendable,
+      problems = issues
+    WHERE hotel_room_id IS DISTINCT FROM hotel_id
+       OR room_capacity IS DISTINCT FROM capacity
+       OR price IS DISTINCT FROM base_price
+       OR view IS NULL
+       OR status IS DISTINCT FROM current_status
+       OR extendable IS DISTINCT FROM is_extendable
+       OR problems IS DISTINCT FROM issues
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_hotel_room_id_fkey`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_hotel_room_id_fkey
+    FOREIGN KEY (hotel_room_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_room_capacity_check`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_room_capacity_check
+    CHECK (room_capacity IS NULL OR room_capacity IN ('single', 'double', 'suite', 'family'))
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_price_check`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_price_check
+    CHECK (price IS NULL OR price > 0)
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_view_check`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_view_check
+    CHECK (view IS NULL OR view IN ('city', 'sea', 'mountain', 'sea_mountain'))
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_status_check_compat`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_status_check_compat
+    CHECK (status IS NULL OR status IN ('available', 'booked', 'rented', 'maintenance'))
+  `);
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_compat_hotel_match_check`);
+  await db.query(`
+    ALTER TABLE room
+    ADD CONSTRAINT room_compat_hotel_match_check
+    CHECK (hotel_room_id IS NULL OR hotel_room_id = hotel_id)
+  `);
+
+  await db.query(`
+    CREATE OR REPLACE FUNCTION fn_sync_room_compatibility_columns()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.hotel_id := COALESCE(NEW.hotel_id, NEW.hotel_room_id);
+      NEW.hotel_room_id := NEW.hotel_id;
+
+      NEW.capacity := COALESCE(NEW.capacity, NEW.room_capacity);
+      NEW.room_capacity := NEW.capacity;
+
+      NEW.base_price := COALESCE(NEW.base_price, NEW.price);
+      NEW.price := NEW.base_price;
+
+      NEW.current_status := COALESCE(NEW.current_status, NEW.status);
+      NEW.status := NEW.current_status;
+
+      NEW.is_extendable := COALESCE(NEW.is_extendable, NEW.extendable);
+      NEW.extendable := NEW.is_extendable;
+
+      NEW.issues := COALESCE(NEW.issues, NEW.problems);
+      NEW.problems := NEW.issues;
+
+      IF NEW.view IS NOT NULL THEN
+        NEW.has_sea_view := NEW.view IN ('sea', 'sea_mountain');
+        NEW.has_mountain_view := NEW.view IN ('mountain', 'sea_mountain');
+      ELSE
+        NEW.view := CASE
+          WHEN COALESCE(NEW.has_sea_view, FALSE) AND COALESCE(NEW.has_mountain_view, FALSE) THEN 'sea_mountain'
+          WHEN COALESCE(NEW.has_sea_view, FALSE) THEN 'sea'
+          WHEN COALESCE(NEW.has_mountain_view, FALSE) THEN 'mountain'
+          ELSE 'city'
+        END;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  await db.query(`DROP TRIGGER IF EXISTS trg_room_sync_compatibility ON room`);
+  await db.query(`
+    CREATE TRIGGER trg_room_sync_compatibility
+    BEFORE INSERT OR UPDATE ON room
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_sync_room_compatibility_columns()
+  `);
+
+  // Populate issues for a subset of rooms (not all), and mirror into problems.
+  await db.query(`
+    WITH candidates AS (
+      SELECT
+        room_id,
+        row_number() OVER (ORDER BY room_id) AS rn
+      FROM room
+      WHERE COALESCE(NULLIF(BTRIM(issues), ''), NULL) IS NULL
+    ),
+    picked AS (
+      SELECT room_id, rn
+      FROM candidates
+      WHERE rn % 5 = 0
+    )
+    UPDATE room r
+    SET issues = CASE (picked.rn % 4)
+          WHEN 0 THEN 'Minor paint damage near balcony door'
+          WHEN 1 THEN 'AC filter noise at high fan speed'
+          WHEN 2 THEN 'Bathroom sink drains slowly'
+          ELSE 'Desk lamp flickers intermittently'
+        END,
+        problems = CASE (picked.rn % 4)
+          WHEN 0 THEN 'Minor paint damage near balcony door'
+          WHEN 1 THEN 'AC filter noise at high fan speed'
+          WHEN 2 THEN 'Bathroom sink drains slowly'
+          ELSE 'Desk lamp flickers intermittently'
+        END
+    FROM picked
+    WHERE r.room_id = picked.room_id
+  `);
 }
 
 async function ensureAuthSchemaAndSeed() {
@@ -1067,7 +1377,7 @@ app.post('/signup/customer', async (req, res) => {
     const person = await client.query(
       `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING person_id`,
+       RETURNING legal_id`,
       [
         normalizedLegalId,
         normalizedIdType,
@@ -1079,10 +1389,10 @@ app.post('/signup/customer', async (req, res) => {
       ]
     );
     const customer = await client.query(
-      `INSERT INTO customer (person_id, hotel_id, registration_date)
+      `INSERT INTO customer (legal_id, hotel_id, registration_date)
        VALUES ($1, NULL, CURRENT_DATE)
        RETURNING customer_id`,
-      [person.rows[0].person_id]
+      [person.rows[0].legal_id]
     );
     await client.query(
       `INSERT INTO auth_account (role, username, password_plain, employee_id, customer_id, is_active)
@@ -1203,7 +1513,7 @@ app.get('/', async (req, res) => {
         const team = await db.query(
           `SELECT e.employee_id, p.first_name, p.last_name, e.role_title
            FROM employee e
-           JOIN person p ON p.person_id = e.person_id
+           JOIN person p ON p.legal_id = e.legal_id
            WHERE e.hotel_id = $1
            ORDER BY p.last_name, p.first_name`,
           [managerHotel.rows[0].hotel_id]
@@ -1234,9 +1544,10 @@ app.get('/search', async (req, res) => {
     const canCreateBooking = ['employee', 'manager', 'admin', 'customer'].includes(req.auth.role);
     const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
     const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
+    const hotelAreaExpr = `COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line)`;
     const filterData = await Promise.all([
       db.query('SELECT chain_id, chain_name FROM hotel_chain ORDER BY chain_name'),
-      db.query('SELECT DISTINCT city FROM hotel ORDER BY city')
+      db.query(`SELECT DISTINCT ${hotelAreaExpr} AS area FROM hotel h ORDER BY area`)
     ]);
 
     const q = req.query;
@@ -1248,9 +1559,10 @@ app.get('/search', async (req, res) => {
       values.push(capacity);
       conditions.push(`r.capacity = $${values.length}`);
     }
-    if (q.city) {
-      values.push(normalizeString(q.city, 'City', 100));
-      conditions.push(`h.city = $${values.length}`);
+    const requestedArea = q.area || q.location || q.city;
+    if (requestedArea) {
+      values.push(normalizeString(requestedArea, 'Area', 100));
+      conditions.push(`${hotelAreaExpr} = $${values.length}`);
     }
     if (q.chain_id) {
       values.push(parsePositiveInt(q.chain_id, 'Hotel chain'));
@@ -1325,7 +1637,8 @@ app.get('/search', async (req, res) => {
         r.current_status,
         h.hotel_id,
         h.hotel_name,
-        h.city,
+        h.address_line,
+        ${hotelAreaExpr} AS area,
         h.category,
         h.total_rooms,
         hc.chain_name
@@ -1333,7 +1646,7 @@ app.get('/search', async (req, res) => {
       JOIN hotel h ON h.hotel_id = r.hotel_id
       JOIN hotel_chain hc ON hc.chain_id = h.chain_id
       ${conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''}
-      ORDER BY h.city ASC, h.hotel_name ASC, r.base_price ASC
+      ORDER BY area ASC, h.hotel_name ASC, r.base_price ASC
       LIMIT 300`,
       values
     );
@@ -1390,7 +1703,7 @@ app.get('/search', async (req, res) => {
             ? await db.query(
                 `SELECT c.customer_id, p.legal_id
                  FROM customer c
-                 JOIN person p ON p.person_id = c.person_id
+                 JOIN person p ON p.legal_id = c.legal_id
                  WHERE c.hotel_id = $1 OR c.hotel_id IS NULL
                  ORDER BY c.customer_id
                  LIMIT 200`,
@@ -1399,7 +1712,7 @@ app.get('/search', async (req, res) => {
             : await db.query(
                 `SELECT c.customer_id, p.legal_id
                  FROM customer c
-                 JOIN person p ON p.person_id = c.person_id
+                 JOIN person p ON p.legal_id = c.legal_id
                  ORDER BY c.customer_id
                  LIMIT 200`
               )
@@ -1412,7 +1725,7 @@ app.get('/search', async (req, res) => {
       message: buildMessage(req.query),
       filters: renderedFilters,
       chains: filterData[0].rows,
-      cities: filterData[1].rows,
+      areas: filterData[1].rows,
       rooms: rooms.rows,
       customers: customers.rows,
       easternToday,
@@ -1464,7 +1777,7 @@ app.post('/bookings', requireRole(['employee', 'manager', 'admin', 'customer']),
       : await db.query(
           `SELECT c.customer_id, c.hotel_id
            FROM customer c
-           JOIN person p ON p.person_id = c.person_id
+           JOIN person p ON p.legal_id = c.legal_id
            WHERE p.legal_id = $1
            LIMIT 1`,
           [normalizedCustomerSin]
@@ -1514,7 +1827,7 @@ app.get('/customer/bookings', requireRole(['customer']), async (req, res) => {
            b.room_id,
            rm.room_number,
            h.hotel_name,
-           h.city,
+           h.address_line AS hotel_location,
            b.start_date,
            b.end_date,
            b.status,
@@ -1537,7 +1850,7 @@ app.get('/customer/bookings', requireRole(['customer']), async (req, res) => {
            rt.room_id,
            rm.room_number,
            h.hotel_name,
-           h.city,
+           h.address_line AS hotel_location,
            rt.start_date,
            rt.end_date,
            rt.status,
@@ -1555,7 +1868,8 @@ app.get('/customer/bookings', requireRole(['customer']), async (req, res) => {
     res.render('customer-bookings', {
       message: buildMessage(req.query),
       bookings: bookings.rows,
-      rentings: rentings.rows
+      rentings: rentings.rows,
+      easternToday: easternTodayISO()
     });
   } catch (err) {
     redirectWith(res, '/', err.message, 'error');
@@ -1614,7 +1928,7 @@ app.get('/settings/customer', requireRole(['customer']), async (req, res) => {
          p.address_line,
          a.username
        FROM customer c
-       JOIN person p ON p.person_id = c.person_id
+       JOIN person p ON p.legal_id = c.legal_id
        JOIN auth_account a ON a.customer_id = c.customer_id
        WHERE c.customer_id = $1
        LIMIT 1`,
@@ -1657,7 +1971,7 @@ app.patch('/settings/customer/profile', requireRole(['customer']), async (req, r
 
     await client.query('BEGIN');
     const customer = await client.query(
-      `SELECT c.person_id, a.account_id
+      `SELECT c.legal_id, a.account_id
        FROM customer c
        JOIN auth_account a ON a.customer_id = c.customer_id
        WHERE c.customer_id = $1 AND a.role = 'customer'
@@ -1671,14 +1985,14 @@ app.patch('/settings/customer/profile', requireRole(['customer']), async (req, r
     await client.query(
       `UPDATE person
        SET first_name = $1, last_name = $2, email = $3, phone = $4, address_line = $5
-       WHERE person_id = $6`,
+       WHERE legal_id = $6`,
       [
         normalizedFirstName,
         normalizedLastName,
         normalizedEmail,
         normalizedPhone,
         normalizedAddress,
-        customer.rows[0].person_id
+        customer.rows[0].legal_id
       ]
     );
 
@@ -1743,7 +2057,7 @@ app.delete('/settings/customer/delete', requireRole(['customer']), async (req, r
     }
 
     const customer = await client.query(
-      `SELECT customer_id, person_id
+      `SELECT customer_id, legal_id
        FROM customer
        WHERE customer_id = $1
        FOR UPDATE`,
@@ -1755,7 +2069,7 @@ app.delete('/settings/customer/delete', requireRole(['customer']), async (req, r
 
     await archiveCustomerHistory(client, customerId);
     await client.query('DELETE FROM customer WHERE customer_id = $1', [customerId]);
-    await client.query('DELETE FROM person WHERE person_id = $1', [customer.rows[0].person_id]);
+    await client.query('DELETE FROM person WHERE legal_id = $1', [customer.rows[0].legal_id]);
     await client.query('COMMIT');
 
     clearAuthCookie(res);
@@ -1778,16 +2092,16 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
       ? await Promise.all([
           db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
                     FROM employee e
-                    JOIN person p ON p.person_id = e.person_id
+                    JOIN person p ON p.legal_id = e.legal_id
                     JOIN hotel h ON h.hotel_id = e.hotel_id
                     WHERE e.hotel_id = $1
                     ORDER BY e.employee_id`, [staffHotelId]),
           db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
                     FROM customer c
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE c.hotel_id = $1 OR c.hotel_id IS NULL
                     ORDER BY c.customer_id LIMIT 200`, [staffHotelId]),
-          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
+          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.address_line AS location
                     FROM room r
                     JOIN hotel h ON h.hotel_id = r.hotel_id
                     WHERE r.current_status = 'available'
@@ -1804,7 +2118,7 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                     FROM booking b
                     JOIN room rm ON rm.room_id = b.room_id
                     JOIN customer c ON c.customer_id = b.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE b.status IN ('reserved', 'checked_in')
                       AND rm.hotel_id = $2
                     ORDER BY
@@ -1824,7 +2138,7 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                     FROM renting rt
                     JOIN room rm ON rm.room_id = rt.room_id
                     JOIN customer c ON c.customer_id = rt.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE rm.hotel_id = $1
                       AND rt.status = 'active'
                     ORDER BY rt.renting_id DESC LIMIT 200`, [staffHotelId]),
@@ -1841,21 +2155,21 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                     JOIN renting rt ON rt.renting_id = pay.renting_id
                     JOIN room rm ON rm.room_id = rt.room_id
                     JOIN customer c ON c.customer_id = rt.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE rm.hotel_id = $1
                     ORDER BY pay.payment_id DESC LIMIT 200`, [staffHotelId])
         ])
       : await Promise.all([
           db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
                     FROM employee e
-                    JOIN person p ON p.person_id = e.person_id
+                    JOIN person p ON p.legal_id = e.legal_id
                     JOIN hotel h ON h.hotel_id = e.hotel_id
                     ORDER BY e.employee_id`),
           db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
                     FROM customer c
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     ORDER BY c.customer_id LIMIT 200`),
-          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
+          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.address_line AS location
                     FROM room r
                     JOIN hotel h ON h.hotel_id = r.hotel_id
                     WHERE r.current_status = 'available'
@@ -1870,7 +2184,7 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       b.status
                     FROM booking b
                     JOIN customer c ON c.customer_id = b.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE b.status IN ('reserved', 'checked_in')
                     ORDER BY
                       (b.end_date < $1) DESC,
@@ -1888,7 +2202,7 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       rt.status
                     FROM renting rt
                     JOIN customer c ON c.customer_id = rt.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     WHERE rt.status = 'active'
                     ORDER BY rt.renting_id DESC LIMIT 200`),
           db.query(`SELECT
@@ -1903,7 +2217,7 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                     FROM payment pay
                     JOIN renting rt ON rt.renting_id = pay.renting_id
                     JOIN customer c ON c.customer_id = rt.customer_id
-                    JOIN person p ON p.person_id = c.person_id
+                    JOIN person p ON p.legal_id = c.legal_id
                     ORDER BY pay.payment_id DESC LIMIT 200`)
         ]);
 
@@ -2219,7 +2533,7 @@ app.post('/employee/rentings/direct', requireRole(['employee', 'manager', 'admin
     const customerCheck = await db.query(
       `SELECT c.customer_id, c.hotel_id
        FROM customer c
-       JOIN person p ON p.person_id = c.person_id
+       JOIN person p ON p.legal_id = c.legal_id
        WHERE p.legal_id = $1
        LIMIT 1`,
       [normalizedCustomerSin]
@@ -2338,7 +2652,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              c.hotel_id,
              COALESCE(h.hotel_name, 'Unassigned') AS hotel_name,
              c.registration_date,
-             p.person_id,
+             p.legal_id,
              p.legal_id,
              p.id_type,
              p.first_name,
@@ -2350,7 +2664,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              a.username,
              a.is_active
            FROM customer c
-           JOIN person p ON p.person_id = c.person_id
+           JOIN person p ON p.legal_id = c.legal_id
            LEFT JOIN hotel h ON h.hotel_id = c.hotel_id
            LEFT JOIN auth_account a
              ON a.customer_id = c.customer_id
@@ -2366,7 +2680,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              c.hotel_id,
              COALESCE(h.hotel_name, 'Unassigned') AS hotel_name,
              c.registration_date,
-             p.person_id,
+             p.legal_id,
              p.legal_id,
              p.id_type,
              p.first_name,
@@ -2378,7 +2692,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              a.username,
              a.is_active
            FROM customer c
-           JOIN person p ON p.person_id = c.person_id
+           JOIN person p ON p.legal_id = c.legal_id
            LEFT JOIN hotel h ON h.hotel_id = c.hotel_id
            LEFT JOIN auth_account a
              ON a.customer_id = c.customer_id
@@ -2421,7 +2735,7 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
     await client.query('BEGIN');
     const person = await client.query(
       `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING person_id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING legal_id`,
       [
         normalizedLegalId,
         normalizedIdType,
@@ -2433,10 +2747,10 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
       ]
     );
     const customer = await client.query(
-      `INSERT INTO customer (person_id, hotel_id, registration_date)
+      `INSERT INTO customer (legal_id, hotel_id, registration_date)
        VALUES ($1, $2, $3)
        RETURNING customer_id`,
-      [person.rows[0].person_id, null, normalizedRegistrationDate]
+      [person.rows[0].legal_id, null, normalizedRegistrationDate]
     );
     const customerId = customer.rows[0].customer_id;
     await client.query(
@@ -2470,7 +2784,7 @@ app.patch('/manage/customers/:id', requireRole(['employee', 'manager', 'admin'])
 
     await client.query('BEGIN');
     const customer = await client.query(
-      `SELECT person_id, hotel_id
+      `SELECT legal_id, hotel_id
        FROM customer
        WHERE customer_id = $1
        FOR UPDATE`,
@@ -2480,11 +2794,11 @@ app.patch('/manage/customers/:id', requireRole(['employee', 'manager', 'admin'])
     if (isStaffRole && customer.rows[0].hotel_id && customer.rows[0].hotel_id !== staffHotelId) {
       throw new Error('You can only update customers registered at your hotel.');
     }
-    const personId = customer.rows[0].person_id;
+    const legalId = customer.rows[0].legal_id;
 
     await client.query(
-      `UPDATE person SET first_name=$1, last_name=$2, email=$3, phone=$4, address_line=$5 WHERE person_id=$6`,
-      [normalizedFirstName, normalizedLastName, normalizedEmail, normalizedPhone, normalizedAddress, personId]
+      `UPDATE person SET first_name=$1, last_name=$2, email=$3, phone=$4, address_line=$5 WHERE legal_id=$6`,
+      [normalizedFirstName, normalizedLastName, normalizedEmail, normalizedPhone, normalizedAddress, legalId]
     );
     await client.query(
       `UPDATE customer
@@ -2562,7 +2876,7 @@ app.delete('/manage/customers/:id', requireRole(['employee', 'manager', 'admin']
     const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     await client.query('BEGIN');
     const c = await client.query(
-      `SELECT person_id, hotel_id
+      `SELECT legal_id, hotel_id
        FROM customer
        WHERE customer_id = $1
        FOR UPDATE`,
@@ -2574,7 +2888,7 @@ app.delete('/manage/customers/:id', requireRole(['employee', 'manager', 'admin']
     }
     await archiveCustomerHistory(client, customerId);
     await client.query('DELETE FROM customer WHERE customer_id = $1', [customerId]);
-    await client.query('DELETE FROM person WHERE person_id = $1', [c.rows[0].person_id]);
+    await client.query('DELETE FROM person WHERE legal_id = $1', [c.rows[0].legal_id]);
     await client.query('COMMIT');
     redirectWith(res, '/manage/customers', 'Customer deleted.', 'success');
   } catch (err) {
@@ -2599,7 +2913,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              h.hotel_name,
              e.role_title,
              e.hired_on,
-             p.person_id,
+             p.legal_id,
              p.legal_id,
              p.first_name,
              p.last_name,
@@ -2611,7 +2925,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              a.username,
              a.is_active
            FROM employee e
-           JOIN person p ON p.person_id = e.person_id
+           JOIN person p ON p.legal_id = e.legal_id
            JOIN hotel h ON h.hotel_id = e.hotel_id
            JOIN auth_account a ON a.employee_id = e.employee_id
            WHERE a.role = ANY($1::text[])
@@ -2627,7 +2941,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              h.hotel_name,
              e.role_title,
              e.hired_on,
-             p.person_id,
+             p.legal_id,
              p.legal_id,
              p.first_name,
              p.last_name,
@@ -2639,7 +2953,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              a.username,
              a.is_active
            FROM employee e
-           JOIN person p ON p.person_id = e.person_id
+           JOIN person p ON p.legal_id = e.legal_id
            JOIN hotel h ON h.hotel_id = e.hotel_id
            JOIN auth_account a ON a.employee_id = e.employee_id
            WHERE a.role = ANY($1::text[])
@@ -2721,7 +3035,7 @@ app.post('/manage/employees', requireRole(['manager', 'admin']), async (req, res
 
     const person = await client.query(
       `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING person_id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING legal_id`,
       [
         normalizedLegalId,
         normalizedIdType,
@@ -2733,11 +3047,11 @@ app.post('/manage/employees', requireRole(['manager', 'admin']), async (req, res
       ]
     );
     const employee = await client.query(
-      `INSERT INTO employee (person_id, hotel_id, role_title, hired_on, is_manager)
+      `INSERT INTO employee (legal_id, hotel_id, role_title, hired_on, is_manager)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING employee_id`,
       [
-        person.rows[0].person_id,
+        person.rows[0].legal_id,
         normalizedHotelId,
         normalizedRoleTitle,
         normalizedHiredOn,
@@ -2793,7 +3107,7 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
 
     await client.query('BEGIN');
     const employee = await client.query(
-      `SELECT e.person_id, e.hotel_id, a.account_id, a.role AS account_role
+      `SELECT e.legal_id, e.hotel_id, a.account_id, a.role AS account_role
        FROM employee e
        LEFT JOIN auth_account a ON a.employee_id = e.employee_id
        WHERE e.employee_id = $1
@@ -2833,14 +3147,14 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
     }
 
     await client.query(
-      'UPDATE person SET first_name=$1,last_name=$2,email=$3,phone=$4,address_line=$5 WHERE person_id=$6',
+      'UPDATE person SET first_name=$1,last_name=$2,email=$3,phone=$4,address_line=$5 WHERE legal_id=$6',
       [
         normalizedFirstName,
         normalizedLastName,
         normalizedEmail,
         normalizedPhone,
         normalizedAddress,
-        employee.rows[0].person_id
+        employee.rows[0].legal_id
       ]
     );
 
@@ -2946,7 +3260,7 @@ app.delete('/manage/employees/:id', requireRole(['manager', 'admin']), async (re
     const staffRecord = await client.query(
       `SELECT
          e.employee_id,
-         e.person_id,
+         e.legal_id,
          e.hotel_id,
          a.account_id,
          a.role AS account_role
@@ -2977,7 +3291,7 @@ app.delete('/manage/employees/:id', requireRole(['manager', 'admin']), async (re
     }
 
     await client.query('DELETE FROM employee WHERE employee_id = $1', [employeeId]);
-    await client.query('DELETE FROM person WHERE person_id = $1', [target.person_id]);
+    await client.query('DELETE FROM person WHERE legal_id = $1', [target.legal_id]);
     await client.query('COMMIT');
     redirectWith(res, '/manage/employees', 'Staff record deleted.', 'success');
   } catch (err) {
@@ -3021,10 +3335,6 @@ app.post('/manage/hotels', requireRole(['admin']), async (req, res) => {
     category,
     total_rooms,
     address_line,
-    city,
-    state_province,
-    country,
-    postal_code,
     contact_email,
     contact_phone
   } = req.body;
@@ -3035,26 +3345,18 @@ app.post('/manage/hotels', requireRole(['admin']), async (req, res) => {
     if (normalizedCategory < 1 || normalizedCategory > 5) throw new Error('Hotel category must be between 1 and 5.');
     const normalizedTotalRooms = parsePositiveInt(total_rooms, 'Total rooms');
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
-    const normalizedCity = normalizeString(city, 'City', 100);
-    const normalizedStateProvince = normalizeString(state_province, 'State/Province', 100);
-    const normalizedCountry = normalizeString(country, 'Country', 80);
-    const normalizedPostalCode = normalizeString(postal_code, 'Postal code', 20);
     const normalizedContactEmail = normalizeEmail(contact_email, 'Contact email');
     const normalizedContactPhone = normalizePhone(contact_phone, 'Contact phone');
 
     await db.query(
-      `INSERT INTO hotel (chain_id, hotel_name, category, total_rooms, address_line, city, state_province, country, postal_code, contact_email, contact_phone)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `INSERT INTO hotel (chain_id, hotel_name, category, total_rooms, address_line, contact_email, contact_phone)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [
         normalizedChainId,
         normalizedHotelName,
         normalizedCategory,
         normalizedTotalRooms,
         normalizedAddress,
-        normalizedCity,
-        normalizedStateProvince,
-        normalizedCountry,
-        normalizedPostalCode,
         normalizedContactEmail,
         normalizedContactPhone
       ]
@@ -3072,10 +3374,6 @@ app.patch('/manage/hotels/:id', requireRole(['admin']), async (req, res) => {
     category,
     total_rooms,
     address_line,
-    city,
-    state_province,
-    country,
-    postal_code,
     contact_email,
     contact_phone
   } = req.body;
@@ -3087,28 +3385,20 @@ app.patch('/manage/hotels/:id', requireRole(['admin']), async (req, res) => {
     if (normalizedCategory < 1 || normalizedCategory > 5) throw new Error('Hotel category must be between 1 and 5.');
     const normalizedTotalRooms = parsePositiveInt(total_rooms, 'Total rooms');
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
-    const normalizedCity = normalizeString(city, 'City', 100);
-    const normalizedStateProvince = normalizeString(state_province, 'State/Province', 100);
-    const normalizedCountry = normalizeString(country, 'Country', 80);
-    const normalizedPostalCode = normalizeString(postal_code, 'Postal code', 20);
     const normalizedContactEmail = normalizeEmail(contact_email, 'Contact email');
     const normalizedContactPhone = normalizePhone(contact_phone, 'Contact phone');
 
     await db.query(
       `UPDATE hotel
        SET chain_id=$1, hotel_name=$2, category=$3, total_rooms=$4, address_line=$5,
-           city=$6, state_province=$7, country=$8, postal_code=$9, contact_email=$10, contact_phone=$11
-       WHERE hotel_id=$12`,
+           contact_email=$6, contact_phone=$7
+       WHERE hotel_id=$8`,
       [
         normalizedChainId,
         normalizedHotelName,
         normalizedCategory,
         normalizedTotalRooms,
         normalizedAddress,
-        normalizedCity,
-        normalizedStateProvince,
-        normalizedCountry,
-        normalizedPostalCode,
         normalizedContactEmail,
         normalizedContactPhone,
         hotelId
@@ -3134,7 +3424,7 @@ app.get('/manage/rooms', requireRole(['admin']), async (req, res) => {
   try {
     const [rooms, hotels] = await Promise.all([
       db.query('SELECT * FROM room ORDER BY room_id LIMIT 500'),
-      db.query('SELECT hotel_id, hotel_name, city FROM hotel ORDER BY hotel_id')
+      db.query('SELECT hotel_id, hotel_name, address_line FROM hotel ORDER BY hotel_id')
     ]);
     res.render('manage/rooms', {
       message: buildMessage(req.query),
@@ -3267,8 +3557,10 @@ async function startServer() {
     await initializeDatabaseIfNeeded();
     await ensurePersonSinSchemaAndData();
     await ensureCustomerHotelSchemaAndData();
+    await ensureHotelSchemaWithoutGeoColumns();
     await ensureArchiveSchemaAndData();
     await ensureHotelCoverageBaseline();
+    await ensureRoomCompatibilitySchemaAndData();
     await ensureAuthSchemaAndSeed();
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);

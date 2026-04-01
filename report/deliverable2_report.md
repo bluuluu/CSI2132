@@ -106,7 +106,7 @@ CREATE TRIGGER trg_archive_renting ...;
 ### Index statements
 ```sql
 CREATE INDEX idx_room_capacity_price_status ON room(capacity, base_price, current_status);
-CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, city, total_rooms);
+CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, total_rooms);
 CREATE INDEX idx_booking_room_dates ON booking(room_id, start_date, end_date);
 CREATE INDEX idx_renting_room_dates ON renting(room_id, start_date, end_date);
 ```
@@ -129,4 +129,3 @@ CREATE OR REPLACE VIEW v_hotel_capacity_aggregate AS ...;
 - `src/db.js`
 - `views/`
 - `public/styles.css`
-

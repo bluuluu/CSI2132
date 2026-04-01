@@ -31,10 +31,6 @@ CREATE TABLE hotel (
   category SMALLINT NOT NULL CHECK (category BETWEEN 1 AND 5),
   total_rooms INT NOT NULL CHECK (total_rooms >= 1),
   address_line VARCHAR(255) NOT NULL,
-  city VARCHAR(100) NOT NULL,
-  state_province VARCHAR(100) NOT NULL,
-  country VARCHAR(80) NOT NULL,
-  postal_code VARCHAR(20) NOT NULL,
   contact_email VARCHAR(120) NOT NULL,
   contact_phone VARCHAR(30) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -42,8 +38,7 @@ CREATE TABLE hotel (
 );
 
 CREATE TABLE person (
-  person_id SERIAL PRIMARY KEY,
-  legal_id VARCHAR(9) NOT NULL UNIQUE,
+  legal_id VARCHAR(9) PRIMARY KEY,
   id_type VARCHAR(20) NOT NULL CHECK (id_type = 'SIN'),
   first_name VARCHAR(80) NOT NULL,
   last_name VARCHAR(80) NOT NULL,
@@ -55,14 +50,14 @@ CREATE TABLE person (
 
 CREATE TABLE customer (
   customer_id SERIAL PRIMARY KEY,
-  person_id INT NOT NULL UNIQUE REFERENCES person(person_id) ON DELETE CASCADE,
+  legal_id VARCHAR(9) NOT NULL UNIQUE REFERENCES person(legal_id) ON DELETE CASCADE,
   hotel_id INT REFERENCES hotel(hotel_id) ON DELETE SET NULL,
   registration_date DATE NOT NULL DEFAULT CURRENT_DATE
 );
 
 CREATE TABLE employee (
   employee_id SERIAL PRIMARY KEY,
-  person_id INT NOT NULL UNIQUE REFERENCES person(person_id) ON DELETE CASCADE,
+  legal_id VARCHAR(9) NOT NULL UNIQUE REFERENCES person(legal_id) ON DELETE CASCADE,
   hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE CASCADE,
   role_title VARCHAR(80) NOT NULL,
   hired_on DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -88,16 +83,24 @@ CREATE TABLE auth_account (
 CREATE TABLE room (
   room_id SERIAL PRIMARY KEY,
   hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE CASCADE,
+  hotel_room_id INT REFERENCES hotel(hotel_id) ON DELETE CASCADE,
   room_number VARCHAR(10) NOT NULL,
   capacity VARCHAR(20) NOT NULL CHECK (capacity IN ('single', 'double', 'suite', 'family')),
+  room_capacity VARCHAR(20) CHECK (room_capacity IS NULL OR room_capacity IN ('single', 'double', 'suite', 'family')),
   base_price NUMERIC(10, 2) NOT NULL CHECK (base_price > 0),
+  price NUMERIC(10, 2) CHECK (price IS NULL OR price > 0),
   has_sea_view BOOLEAN NOT NULL DEFAULT FALSE,
   has_mountain_view BOOLEAN NOT NULL DEFAULT FALSE,
+  view VARCHAR(20) CHECK (view IS NULL OR view IN ('city', 'sea', 'mountain', 'sea_mountain')),
   is_extendable BOOLEAN NOT NULL DEFAULT FALSE,
+  extendable BOOLEAN,
   amenities TEXT NOT NULL,
   issues TEXT,
+  problems TEXT,
   current_status VARCHAR(20) NOT NULL DEFAULT 'available'
     CHECK (current_status IN ('available', 'booked', 'rented', 'maintenance')),
+  status VARCHAR(20) CHECK (status IS NULL OR status IN ('available', 'booked', 'rented', 'maintenance')),
+  CHECK (hotel_room_id IS NULL OR hotel_room_id = hotel_id),
   UNIQUE (hotel_id, room_number)
 );
 
@@ -297,7 +300,7 @@ BEGIN
     JOIN hotel h ON h.hotel_id = rm.hotel_id
     JOIN hotel_chain hc ON hc.chain_id = h.chain_id
     JOIN customer c ON c.customer_id = NEW.customer_id
-    JOIN person p ON p.person_id = c.person_id
+    JOIN person p ON p.legal_id = c.legal_id
     WHERE rm.room_id = NEW.room_id;
   END IF;
 
@@ -344,7 +347,7 @@ BEGIN
     JOIN hotel h ON h.hotel_id = rm.hotel_id
     JOIN hotel_chain hc ON hc.chain_id = h.chain_id
     JOIN customer c ON c.customer_id = NEW.customer_id
-    JOIN person p ON p.person_id = c.person_id
+    JOIN person p ON p.legal_id = c.legal_id
     WHERE rm.room_id = NEW.room_id;
   END IF;
 
@@ -422,7 +425,7 @@ JOIN room rm ON rm.room_id = b.room_id
 JOIN hotel h ON h.hotel_id = rm.hotel_id
 JOIN hotel_chain hc ON hc.chain_id = h.chain_id
 JOIN customer c ON c.customer_id = b.customer_id
-JOIN person p ON p.person_id = c.person_id
+JOIN person p ON p.legal_id = c.legal_id
 WHERE b.status IN ('completed', 'cancelled')
   AND NOT EXISTS (
     SELECT 1
@@ -461,7 +464,7 @@ JOIN room rm ON rm.room_id = rt.room_id
 JOIN hotel h ON h.hotel_id = rm.hotel_id
 JOIN hotel_chain hc ON hc.chain_id = h.chain_id
 JOIN customer c ON c.customer_id = rt.customer_id
-JOIN person p ON p.person_id = c.person_id
+JOIN person p ON p.legal_id = c.legal_id
 WHERE rt.status IN ('completed', 'cancelled')
   AND NOT EXISTS (
     SELECT 1
@@ -471,26 +474,26 @@ WHERE rt.status IN ('completed', 'cancelled')
   );
 
 CREATE INDEX idx_room_capacity_price_status ON room(capacity, base_price, current_status);
-CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, city, total_rooms);
+CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, total_rooms);
 CREATE INDEX idx_booking_room_dates ON booking(room_id, start_date, end_date);
 CREATE INDEX idx_renting_room_dates ON renting(room_id, start_date, end_date);
 CREATE INDEX idx_auth_account_role_active ON auth_account(role, is_active);
 
 CREATE OR REPLACE VIEW v_available_rooms_per_area AS
 SELECT
-  h.city AS area,
+  COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line) AS area,
   COUNT(*)::INT AS available_rooms
 FROM room r
 JOIN hotel h ON h.hotel_id = r.hotel_id
 WHERE r.current_status = 'available'
-GROUP BY h.city
-ORDER BY h.city;
+GROUP BY COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line)
+ORDER BY area;
 
 CREATE OR REPLACE VIEW v_hotel_capacity_aggregate AS
 SELECT
   h.hotel_id,
   h.hotel_name,
-  h.city,
+  h.address_line,
   SUM(
     CASE r.capacity
       WHEN 'single' THEN 1
@@ -502,7 +505,7 @@ SELECT
   )::INT AS aggregated_capacity
 FROM hotel h
 JOIN room r ON r.hotel_id = h.hotel_id
-GROUP BY h.hotel_id, h.hotel_name, h.city
+GROUP BY h.hotel_id, h.hotel_name, h.address_line
 ORDER BY h.hotel_id;
 
 COMMIT;

@@ -27,7 +27,7 @@
       <select name="room_id" required>
         <option value="">Choose</option>
         <% availableRooms.forEach(r => { %>
-          <option value="<%= r.room_id %>">#<%= r.room_id %> (<%= r.hotel_name %>, <%= r.city %>)</option>
+          <option value="<%= r.room_id %>">#<%= r.room_id %> (<%= r.hotel_name %>, <%= r.location %>)</option>
         <% }) %>
       </select>
     </label>
@@ -127,23 +127,29 @@
           <td><%= bookingEndIso %></td>
           <td><span class="status-badge status-<%= b.status.replace(/[^a-z_]/g, '_') %>"><%= b.status %></span></td>
           <td>
+            <% const canCancel = (b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso >= easternToday; %>
+            <% const canUpdateDates = b.status === 'reserved' && bookingEndIso >= easternToday; %>
+            <% const canComplete = (b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso < easternToday; %>
             <div class="inline-form">
-              <% if ((b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso >= easternToday) { %>
+              <% if (canCancel) { %>
                 <form method="POST" action="/employee/bookings/<%= b.booking_id %>/cancel?_method=PATCH">
                   <button type="submit">Cancel</button>
                 </form>
               <% } %>
-              <% if (b.status === 'reserved' && bookingEndIso >= easternToday) { %>
+              <% if (canUpdateDates) { %>
                 <form method="POST" action="/employee/bookings/<%= b.booking_id %>/dates?_method=PATCH" class="inline-form">
                   <input type="date" name="start_date" value="<%= bookingStartIso %>" min="<%= easternToday %>" required />
                   <input type="date" name="end_date" value="<%= bookingEndIso %>" required />
                   <button type="submit">Update Dates</button>
                 </form>
               <% } %>
-              <% if ((b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso < easternToday) { %>
+              <% if (canComplete) { %>
                 <form method="POST" action="/employee/bookings/<%= b.booking_id %>/complete?_method=PATCH">
                   <button type="submit">Mark Completed</button>
                 </form>
+              <% } %>
+              <% if (!canCancel && !canUpdateDates && !canComplete) { %>
+                <span class="muted">-</span>
               <% } %>
             </div>
           </td>

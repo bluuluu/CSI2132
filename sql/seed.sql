@@ -19,24 +19,14 @@ WITH cities AS (
   ] AS n
 )
 INSERT INTO hotel (
-  chain_id, hotel_name, category, total_rooms, address_line, city, state_province, country,
-  postal_code, contact_email, contact_phone
+  chain_id, hotel_name, category, total_rooms, address_line, contact_email, contact_phone
 )
 SELECT
   ((g - 1) / 8) + 1 AS chain_id,
   (SELECT n[((g - 1) % array_length(n, 1)) + 1] FROM cities) || ' Hotel ' || g AS hotel_name,
   ((g - 1) % 5) + 1 AS category,
   24 + (g % 14) AS total_rooms,
-  (120 + g) || ' Market Street' AS address_line,
-  (SELECT c[((g - 1) % array_length(c, 1)) + 1] FROM cities) AS city,
-  CASE
-    WHEN g % 2 = 0 THEN 'ON'
-    WHEN g % 3 = 0 THEN 'QC'
-    WHEN g % 5 = 0 THEN 'BC'
-    ELSE 'USA'
-  END AS state_province,
-  CASE WHEN g % 4 = 0 THEN 'USA' ELSE 'Canada' END AS country,
-  'H' || lpad((2000 + g)::text, 4, '0') AS postal_code,
+  (120 + g) || ' Market Street, ' || (SELECT c[((g - 1) % array_length(c, 1)) + 1] FROM cities) AS address_line,
   'frontdesk' || g || '@demo-ehotels.com' AS contact_email,
   '5557' || lpad(g::text, 6, '0') AS contact_phone
 FROM generate_series(1, 40) AS g;
@@ -84,16 +74,16 @@ FROM generate_series(1, 120) AS g;
 
 WITH customer_people AS (
   SELECT
-    person_id,
-    row_number() OVER (ORDER BY person_id) AS rn
+    legal_id,
+    row_number() OVER (ORDER BY legal_id) AS rn
   FROM person
   WHERE email LIKE 'guest%@staymail.com'
 )
-INSERT INTO customer (person_id, hotel_id, registration_date)
+INSERT INTO customer (legal_id, hotel_id, registration_date)
 SELECT
-  person_id,
+  legal_id,
   ((rn - 1) % 40) + 1 AS hotel_id,
-  CURRENT_DATE - ((person_id % 400) || ' days')::interval
+  CURRENT_DATE - ((rn % 400) || ' days')::interval
 FROM customer_people;
 
 INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
@@ -109,14 +99,14 @@ FROM generate_series(1, 80) AS g;
 
 WITH emp_people AS (
   SELECT
-    person_id,
+    legal_id,
     row_number() OVER (ORDER BY email) AS rn
   FROM person
   WHERE email LIKE 'team%@workmail.com'
 )
-INSERT INTO employee (person_id, hotel_id, role_title, hired_on, is_manager)
+INSERT INTO employee (legal_id, hotel_id, role_title, hired_on, is_manager)
 SELECT
-  person_id,
+  legal_id,
   ((rn - 1) / 2) + 1 AS hotel_id,
   CASE WHEN rn % 2 = 1 THEN 'Manager' ELSE 'Guest Services Agent' END,
   CURRENT_DATE - ((rn % 365) || ' days')::interval,

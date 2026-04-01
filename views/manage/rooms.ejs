@@ -10,7 +10,7 @@
   <form method="POST" action="/manage/rooms" class="grid form-grid">
     <label>Hotel
       <select name="hotel_id" required>
-        <% hotels.forEach(h => { %><option value="<%= h.hotel_id %>">#<%= h.hotel_id %> <%= h.hotel_name %> (<%= h.city %>)</option><% }) %>
+        <% hotels.forEach(h => { %><option value="<%= h.hotel_id %>">#<%= h.hotel_id %> <%= h.hotel_name %> (<%= h.address_line %>)</option><% }) %>
       </select>
     </label>
     <label>Room Number <input name="room_number" maxlength="10" required /></label>

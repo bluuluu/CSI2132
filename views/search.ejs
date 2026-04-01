@@ -25,11 +25,12 @@
         <% }) %>
       </select>
     </label>
-    <label>Area (City)
-      <select name="city">
+    <label>Area
+      <select name="area">
         <option value="">Any</option>
-        <% cities.forEach(row => { %>
-          <option value="<%= row.city %>" <%= filters.city === row.city ? 'selected' : '' %>><%= row.city %></option>
+        <% areas.forEach(row => { %>
+          <% const selectedArea = filters.area || filters.location || filters.city; %>
+          <option value="<%= row.area %>" <%= selectedArea === row.area ? 'selected' : '' %>><%= row.area %></option>
         <% }) %>
       </select>
     </label>
@@ -73,7 +74,7 @@
     <table>
       <thead>
         <tr>
-          <th>Room ID</th><th>Room #</th><th>Hotel</th><th>Chain</th><th>City</th><th>Category</th>
+          <th>Room ID</th><th>Room #</th><th>Hotel</th><th>Chain</th><th>Area</th><th>Category</th>
           <th>Capacity</th><th>Price</th><th>Status</th><th>Amenities</th><th>Availability Calendar</th><th>Book</th>
         </tr>
       </thead>
@@ -89,7 +90,7 @@
             <td><%= room.room_number %></td>
             <td><%= room.hotel_name %></td>
             <td><%= room.chain_name %></td>
-            <td><%= room.city %></td>
+            <td><%= room.area %></td>
             <td><%= room.category %> star</td>
             <td><%= room.capacity %></td>
             <td>$<%= room.base_price %></td>

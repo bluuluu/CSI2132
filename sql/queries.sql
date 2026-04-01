@@ -16,7 +16,7 @@ SELECT
   p.last_name,
   SUM(pay.amount) AS total_spent
 FROM customer c
-JOIN person p ON p.person_id = c.person_id
+JOIN person p ON p.legal_id = c.legal_id
 JOIN renting rt ON rt.customer_id = c.customer_id
 JOIN payment pay ON pay.renting_id = rt.renting_id
 GROUP BY c.customer_id, p.first_name, p.last_name
@@ -32,12 +32,12 @@ HAVING SUM(pay.amount) > (
 ORDER BY total_spent DESC;
 
 -- Q3: Available rooms with multiple filters
--- Parameters: start_date, end_date, capacity, city, chain_id, category, max_price
+-- Parameters: start_date, end_date, capacity, area, chain_id, category, max_price
 SELECT
   r.room_id,
   h.hotel_name,
   hc.chain_name,
-  h.city,
+  COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line) AS area,
   h.category,
   r.capacity,
   r.base_price
@@ -46,7 +46,7 @@ JOIN hotel h ON h.hotel_id = r.hotel_id
 JOIN hotel_chain hc ON hc.chain_id = h.chain_id
 WHERE r.current_status = 'available'
   AND r.capacity = 'double'
-  AND h.city = 'Toronto'
+  AND COALESCE(NULLIF(BTRIM(SPLIT_PART(h.address_line, ',', 2)), ''), h.address_line) = 'Toronto'
   AND h.chain_id = 1
   AND h.category >= 3
   AND r.base_price <= 250
@@ -75,7 +75,7 @@ SELECT
   COUNT(DISTINCT rt.renting_id) AS rentings_handled,
   COALESCE(SUM(pay.amount), 0) AS total_payments_processed
 FROM employee e
-JOIN person pp ON pp.person_id = e.person_id
+JOIN person pp ON pp.legal_id = e.legal_id
 JOIN hotel h ON h.hotel_id = e.hotel_id
 LEFT JOIN booking b ON b.created_by_employee_id = e.employee_id
 LEFT JOIN renting rt ON rt.employee_id = e.employee_id

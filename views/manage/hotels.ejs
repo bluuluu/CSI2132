@@ -17,10 +17,6 @@
     <label>Category <input type="number" min="1" max="5" name="category" required /></label>
     <label>Total Rooms <input type="number" min="1" name="total_rooms" required /></label>
     <label>Address <input name="address_line" maxlength="255" required /></label>
-    <label>City <input name="city" maxlength="100" required /></label>
-    <label>State/Province <input name="state_province" maxlength="100" required /></label>
-    <label>Country <input name="country" maxlength="80" required /></label>
-    <label>Postal Code <input name="postal_code" maxlength="20" required /></label>
     <label>Email <input type="email" name="contact_email" maxlength="120" required /></label>
     <label>Phone
       <input
@@ -42,7 +38,7 @@
   <h2>Hotels</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Chain</th><th>City</th><th>Category</th><th>Total Rooms</th><th>Update</th><th>Delete</th></tr></thead>
+      <thead><tr><th>ID</th><th>Name</th><th>Chain</th><th>Address</th><th>Category</th><th>Total Rooms</th><th>Update</th><th>Delete</th></tr></thead>
       <tbody>
       <% if (hotels.length === 0) { %>
         <tr><td colspan="8" class="data-empty">No hotel records found.</td></tr>
@@ -52,7 +48,7 @@
           <td><%= h.hotel_id %></td>
           <td><%= h.hotel_name %></td>
           <td><%= h.chain_id %></td>
-          <td><%= h.city %></td>
+          <td><%= h.address_line %></td>
           <td><%= h.category %></td>
           <td><%= h.total_rooms %></td>
           <td>
@@ -66,10 +62,6 @@
               <input type="number" min="1" max="5" name="category" value="<%= h.category %>" required />
               <input type="number" min="1" name="total_rooms" value="<%= h.total_rooms %>" required />
               <input name="address_line" value="<%= h.address_line %>" maxlength="255" required />
-              <input name="city" value="<%= h.city %>" maxlength="100" required />
-              <input name="state_province" value="<%= h.state_province %>" maxlength="100" required />
-              <input name="country" value="<%= h.country %>" maxlength="80" required />
-              <input name="postal_code" value="<%= h.postal_code %>" maxlength="20" required />
               <input type="email" name="contact_email" value="<%= h.contact_email %>" maxlength="120" required />
               <input
                 name="contact_phone"
