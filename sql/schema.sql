@@ -56,6 +56,7 @@ CREATE TABLE person (
 CREATE TABLE customer (
   customer_id SERIAL PRIMARY KEY,
   person_id INT NOT NULL UNIQUE REFERENCES person(person_id) ON DELETE CASCADE,
+  hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE RESTRICT,
   registration_date DATE NOT NULL DEFAULT CURRENT_DATE
 );
 

@@ -82,10 +82,19 @@ SELECT
   (40 + g) || ' Willow Crescent'
 FROM generate_series(1, 120) AS g;
 
-INSERT INTO customer (person_id, registration_date)
-SELECT person_id, CURRENT_DATE - ((person_id % 400) || ' days')::interval
-FROM person
-WHERE email LIKE 'guest%@staymail.com';
+WITH customer_people AS (
+  SELECT
+    person_id,
+    row_number() OVER (ORDER BY person_id) AS rn
+  FROM person
+  WHERE email LIKE 'guest%@staymail.com'
+)
+INSERT INTO customer (person_id, hotel_id, registration_date)
+SELECT
+  person_id,
+  ((rn - 1) % 40) + 1 AS hotel_id,
+  CURRENT_DATE - ((person_id % 400) || ' days')::interval
+FROM customer_people;
 
 INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
 SELECT

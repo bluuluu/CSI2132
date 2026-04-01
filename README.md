@@ -115,6 +115,7 @@ You can also start from `/login` and choose a role card.
 - Employee:
   - Can register customers at the desk using SIN (9 digits)
   - Can create bookings and direct rentings for registered customers by entering customer SIN
+  - Can only book/rent for customers registered at the same hotel and for rooms in that hotel
   - Booking start date is fixed to today's Eastern date
   - Can run check-in and direct renting workflows
   - Cannot manage staff accounts, SQL views, or hotel/room admin CRUD pages
@@ -137,6 +138,7 @@ You can also start from `/login` and choose a role card.
 
 - Room search with multi-criteria filters:
   - dates, room capacity, area, hotel chain, category, total rooms, and price
+  - employee/manager search is scoped to their assigned hotel
 - Staff-only authenticated booking flow
 - Role-based login for employee/manager/admin portals and permission controls
 - DB-backed login accounts (`auth_account`) for admin, manager, employee, and customer
@@ -145,6 +147,9 @@ You can also start from `/login` and choose a role card.
   - direct renting creation
 - Front-desk customer registration by SIN
 - DB-level SIN enforcement for all people (customers, employees, managers): `id_type='SIN'` and exactly 9 digits
+- Customers are assigned to a hotel, and staff workflows enforce same-hotel booking/renting
+- Baseline data guarantees at least 5 rooms per hotel, at least 1 manager per hotel, and at least 1 employee per hotel
+- Staff management enforces up to 3 employees and 1 manager per hotel
 - Admin staff account management with enable/disable workflows (no destructive staff deletion)
 - CRUD pages for customers (staff/admin), and hotels/rooms (admin)
 - Required SQL Views displayed in UI

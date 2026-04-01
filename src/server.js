@@ -364,7 +364,7 @@ function assertCanManageStaffAccount(currentRole, targetRole) {
   throw new Error('You do not have permission to manage this staff account.');
 }
 
-async function fetchManagerHotelId(employeeId) {
+async function fetchStaffHotelId(employeeId, roleLabel = 'Staff') {
   const result = await db.query(
     `SELECT hotel_id
      FROM employee
@@ -373,9 +373,13 @@ async function fetchManagerHotelId(employeeId) {
     [employeeId]
   );
   if (result.rowCount === 0) {
-    throw new Error('Manager profile is not linked to a valid employee record.');
+    throw new Error(`${roleLabel} profile is not linked to a valid employee record.`);
   }
   return result.rows[0].hotel_id;
+}
+
+async function fetchManagerHotelId(employeeId) {
+  return fetchStaffHotelId(employeeId, 'Manager');
 }
 
 async function ensurePersonSinSchemaAndData() {
@@ -413,6 +417,182 @@ async function ensurePersonSinSchemaAndData() {
   await db.query(`ALTER TABLE person ALTER COLUMN legal_id TYPE VARCHAR(9)`);
   await db.query(`ALTER TABLE person ADD CONSTRAINT person_id_type_check CHECK (id_type = 'SIN')`);
   await db.query(`ALTER TABLE person ADD CONSTRAINT person_legal_id_sin_format_check CHECK (legal_id ~ '^[0-9]{9}$')`);
+}
+
+async function ensureCustomerHotelSchemaAndData() {
+  const customerTable = await db.query("SELECT to_regclass('public.customer') AS table_name");
+  if (!customerTable.rows[0].table_name) {
+    return;
+  }
+
+  const hotelIdColumn = await db.query(
+    `SELECT 1
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'customer'
+       AND column_name = 'hotel_id'
+     LIMIT 1`
+  );
+
+  if (hotelIdColumn.rowCount === 0) {
+    await db.query(`ALTER TABLE customer ADD COLUMN hotel_id INT`);
+  }
+
+  await db.query(`
+    WITH booking_hotel AS (
+      SELECT b.customer_id, MIN(r.hotel_id) AS hotel_id
+      FROM booking b
+      JOIN room r ON r.room_id = b.room_id
+      GROUP BY b.customer_id
+    ),
+    renting_hotel AS (
+      SELECT rt.customer_id, MIN(r.hotel_id) AS hotel_id
+      FROM renting rt
+      JOIN room r ON r.room_id = rt.room_id
+      GROUP BY rt.customer_id
+    )
+    UPDATE customer c
+    SET hotel_id = COALESCE(booking_hotel.hotel_id, renting_hotel.hotel_id)
+    FROM booking_hotel
+    FULL OUTER JOIN renting_hotel ON renting_hotel.customer_id = booking_hotel.customer_id
+    WHERE c.customer_id = COALESCE(booking_hotel.customer_id, renting_hotel.customer_id)
+      AND c.hotel_id IS NULL
+  `);
+
+  await db.query(`
+    WITH hotel_count AS (
+      SELECT COUNT(*)::INT AS cnt FROM hotel
+    )
+    UPDATE customer c
+    SET hotel_id = ((c.customer_id - 1) % hotel_count.cnt) + 1
+    FROM hotel_count
+    WHERE c.hotel_id IS NULL
+      AND hotel_count.cnt > 0
+  `);
+
+  await db.query(`ALTER TABLE customer DROP CONSTRAINT IF EXISTS customer_hotel_id_fkey`);
+  await db.query(`ALTER TABLE customer ALTER COLUMN hotel_id SET NOT NULL`);
+  await db.query(`
+    ALTER TABLE customer
+    ADD CONSTRAINT customer_hotel_id_fkey
+    FOREIGN KEY (hotel_id) REFERENCES hotel(hotel_id) ON DELETE RESTRICT
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_customer_hotel_id ON customer(hotel_id)`);
+}
+
+async function ensureHotelCoverageBaseline() {
+  const hotelsResult = await db.query(`SELECT hotel_id FROM hotel ORDER BY hotel_id`);
+  if (hotelsResult.rowCount === 0) return;
+
+  const hotelIds = hotelsResult.rows.map((row) => row.hotel_id);
+
+  const sinResult = await db.query(
+    `SELECT COALESCE(MAX(CASE WHEN legal_id ~ '^[0-9]{9}$' THEN legal_id::BIGINT END), 100000000) AS max_sin
+     FROM person`
+  );
+  let nextSin = Number(sinResult.rows[0].max_sin);
+
+  const roomCountsResult = await db.query(
+    `SELECT hotel_id, COUNT(*)::INT AS count
+     FROM room
+     GROUP BY hotel_id`
+  );
+  const roomCountMap = new Map(roomCountsResult.rows.map((row) => [row.hotel_id, row.count]));
+
+  const staffCountsResult = await db.query(
+    `SELECT
+       hotel_id,
+       SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count,
+       SUM(CASE WHEN NOT is_manager THEN 1 ELSE 0 END)::INT AS employee_count
+     FROM employee
+     GROUP BY hotel_id`
+  );
+  const staffCountMap = new Map(
+    staffCountsResult.rows.map((row) => [row.hotel_id, {
+      manager_count: row.manager_count || 0,
+      employee_count: row.employee_count || 0
+    }])
+  );
+
+  for (const hotelId of hotelIds) {
+    const existingRooms = await db.query(
+      `SELECT room_number
+       FROM room
+       WHERE hotel_id = $1`,
+      [hotelId]
+    );
+    const usedRoomNumbers = new Set(existingRooms.rows.map((row) => String(row.room_number)));
+    const currentRoomCount = roomCountMap.get(hotelId) || 0;
+    let nextRoomNumber = 100;
+
+    for (let i = currentRoomCount; i < 5; i += 1) {
+      while (usedRoomNumbers.has(String(nextRoomNumber))) {
+        nextRoomNumber += 1;
+      }
+      const roomNumber = String(nextRoomNumber);
+      usedRoomNumbers.add(roomNumber);
+      nextRoomNumber += 1;
+
+      const capacityCycle = ['single', 'double', 'suite', 'family', 'double'];
+      const capacity = capacityCycle[i % capacityCycle.length];
+      const basePrice = (95 + hotelId * 2 + i * 12).toFixed(2);
+
+      await db.query(
+        `INSERT INTO room (
+           hotel_id,
+           room_number,
+           capacity,
+           base_price,
+           has_sea_view,
+           has_mountain_view,
+           is_extendable,
+           amenities,
+           issues,
+           current_status
+         )
+         VALUES ($1, $2, $3, $4, FALSE, FALSE, $5, $6, NULL, 'available')`,
+        [hotelId, roomNumber, capacity, basePrice, capacity === 'double' || capacity === 'family', 'WiFi, TV']
+      );
+    }
+
+    const staffCounts = staffCountMap.get(hotelId) || { manager_count: 0, employee_count: 0 };
+    const needManager = staffCounts.manager_count < 1;
+    const needEmployee = staffCounts.employee_count < 1;
+
+    if (!needManager && !needEmployee) {
+      continue;
+    }
+
+    const createStaff = async (isManager) => {
+      nextSin += 1;
+      const sin = String(nextSin).padStart(9, '0');
+      const firstName = isManager ? 'Hotel' : 'Frontdesk';
+      const lastName = `${isManager ? 'Manager' : 'Employee'}${hotelId}`;
+      const email = `${isManager ? 'manager' : 'employee'}.hotel${hotelId}.${sin}@workmail.com`;
+      const phone = String(2000000000 + (nextSin % 7000000000)).slice(-10);
+      const address = `${300 + hotelId} Service Road`;
+
+      const person = await db.query(
+        `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
+         VALUES ($1, 'SIN', $2, $3, $4, $5, $6)
+         RETURNING person_id`,
+        [sin, firstName, lastName, email, phone, address]
+      );
+
+      await db.query(
+        `INSERT INTO employee (person_id, hotel_id, role_title, hired_on, is_manager)
+         VALUES ($1, $2, $3, CURRENT_DATE, $4)`,
+        [person.rows[0].person_id, hotelId, isManager ? 'Manager' : 'Guest Services Agent', isManager]
+      );
+    };
+
+    if (needManager) {
+      await createStaff(true);
+    }
+    if (needEmployee) {
+      await createStaff(false);
+    }
+  }
 }
 
 async function ensureAuthSchemaAndSeed() {
@@ -643,6 +823,8 @@ app.get('/', async (req, res) => {
 app.get('/search', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
     const easternToday = easternTodayISO();
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const filterData = await Promise.all([
       db.query('SELECT chain_id, chain_name FROM hotel_chain ORDER BY chain_name'),
       db.query('SELECT DISTINCT city FROM hotel ORDER BY city')
@@ -678,6 +860,10 @@ app.get('/search', requireRole(['employee', 'manager', 'admin']), async (req, re
     if (q.max_price) {
       values.push(parsePositiveNumber(q.max_price, 'Maximum room price'));
       conditions.push(`r.base_price <= $${values.length}`);
+    }
+    if (isStaffRole) {
+      values.push(staffHotelId);
+      conditions.push(`h.hotel_id = $${values.length}`);
     }
 
     const startDate = sanitizeDate(q.start_date);
@@ -736,13 +922,23 @@ app.get('/search', requireRole(['employee', 'manager', 'admin']), async (req, re
       values
     );
 
-    const customers = await db.query(
-      `SELECT c.customer_id, p.legal_id
-       FROM customer c
-       JOIN person p ON p.person_id = c.person_id
-       ORDER BY c.customer_id
-       LIMIT 200`
-    );
+    const customers = isStaffRole
+      ? await db.query(
+          `SELECT c.customer_id, p.legal_id
+           FROM customer c
+           JOIN person p ON p.person_id = c.person_id
+           WHERE c.hotel_id = $1
+           ORDER BY c.customer_id
+           LIMIT 200`,
+          [staffHotelId]
+        )
+      : await db.query(
+          `SELECT c.customer_id, p.legal_id
+           FROM customer c
+           JOIN person p ON p.person_id = c.person_id
+           ORDER BY c.customer_id
+           LIMIT 200`
+        );
 
     const renderedFilters = { ...q, start_date: q.start_date || easternToday };
 
@@ -763,6 +959,8 @@ app.get('/search', requireRole(['employee', 'manager', 'admin']), async (req, re
 app.post('/bookings', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   const { room_id, customer_sin, employee_id, start_date, end_date } = req.body;
   try {
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const roomId = parsePositiveInt(room_id, 'Room');
     const normalizedCustomerSin = normalizeSin(customer_sin, 'Customer SIN');
     const effectiveEmployeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
@@ -776,8 +974,19 @@ app.post('/bookings', requireRole(['employee', 'manager', 'admin']), async (req,
     }
     ensureEndDateAfterStartDate(normalizedStartDate, normalizedEndDate);
 
+    const roomCheck = await db.query(
+      `SELECT room_id, hotel_id
+       FROM room
+       WHERE room_id = $1
+       LIMIT 1`,
+      [roomId]
+    );
+    if (roomCheck.rowCount === 0) {
+      throw new Error('Room not found.');
+    }
+
     const customerCheck = await db.query(
-      `SELECT c.customer_id
+      `SELECT c.customer_id, c.hotel_id
        FROM customer c
        JOIN person p ON p.person_id = c.person_id
        WHERE p.legal_id = $1
@@ -787,6 +996,16 @@ app.post('/bookings', requireRole(['employee', 'manager', 'admin']), async (req,
     if (customerCheck.rowCount === 0) {
       throw new Error('No customer found with that SIN.');
     }
+
+    if (isStaffRole) {
+      if (roomCheck.rows[0].hotel_id !== staffHotelId) {
+        throw new Error('You can only book rooms at your assigned hotel.');
+      }
+      if (customerCheck.rows[0].hotel_id !== staffHotelId) {
+        throw new Error('You can only book for customers registered at your hotel.');
+      }
+    }
+
     const effectiveCustomerId = customerCheck.rows[0].customer_id;
 
     await db.query(
@@ -985,48 +1204,103 @@ app.patch('/settings/customer/deactivate', requireRole(['customer']), async (req
 app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
     const easternToday = easternTodayISO();
-    const [employees, customers, availableRooms, activeBookings, activeRentings] = await Promise.all([
-      db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
-                FROM employee e
-                JOIN person p ON p.person_id = e.person_id
-                JOIN hotel h ON h.hotel_id = e.hotel_id
-                ORDER BY e.employee_id`),
-      db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
-                FROM customer c
-                JOIN person p ON p.person_id = c.person_id
-                ORDER BY c.customer_id LIMIT 200`),
-      db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
-                FROM room r JOIN hotel h ON h.hotel_id = r.hotel_id
-                WHERE r.current_status = 'available'
-                ORDER BY r.room_id LIMIT 200`),
-      db.query(`SELECT
-                  b.booking_id,
-                  b.room_id,
-                  b.customer_id,
-                  p.legal_id AS customer_sin,
-                  b.start_date,
-                  b.end_date,
-                  b.status
-                FROM booking b
-                JOIN customer c ON c.customer_id = b.customer_id
-                JOIN person p ON p.person_id = c.person_id
-                WHERE b.status IN ('reserved', 'checked_in')
-                  AND b.start_date = $1
-                ORDER BY b.booking_id DESC LIMIT 200`, [easternToday]),
-      db.query(`SELECT
-                  rt.renting_id,
-                  rt.room_id,
-                  rt.customer_id,
-                  p.legal_id AS customer_sin,
-                  rt.employee_id,
-                  rt.start_date,
-                  rt.end_date,
-                  rt.status
-                FROM renting rt
-                JOIN customer c ON c.customer_id = rt.customer_id
-                JOIN person p ON p.person_id = c.person_id
-                ORDER BY rt.renting_id DESC LIMIT 200`)
-    ]);
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
+
+    const [employees, customers, availableRooms, activeBookings, activeRentings] = isStaffRole
+      ? await Promise.all([
+          db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
+                    FROM employee e
+                    JOIN person p ON p.person_id = e.person_id
+                    JOIN hotel h ON h.hotel_id = e.hotel_id
+                    WHERE e.hotel_id = $1
+                    ORDER BY e.employee_id`, [staffHotelId]),
+          db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
+                    FROM customer c
+                    JOIN person p ON p.person_id = c.person_id
+                    WHERE c.hotel_id = $1
+                    ORDER BY c.customer_id LIMIT 200`, [staffHotelId]),
+          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
+                    FROM room r
+                    JOIN hotel h ON h.hotel_id = r.hotel_id
+                    WHERE r.current_status = 'available'
+                      AND r.hotel_id = $1
+                    ORDER BY r.room_id LIMIT 200`, [staffHotelId]),
+          db.query(`SELECT
+                      b.booking_id,
+                      b.room_id,
+                      b.customer_id,
+                      p.legal_id AS customer_sin,
+                      b.start_date,
+                      b.end_date,
+                      b.status
+                    FROM booking b
+                    JOIN room rm ON rm.room_id = b.room_id
+                    JOIN customer c ON c.customer_id = b.customer_id
+                    JOIN person p ON p.person_id = c.person_id
+                    WHERE b.status IN ('reserved', 'checked_in')
+                      AND b.start_date = $1
+                      AND rm.hotel_id = $2
+                    ORDER BY b.booking_id DESC LIMIT 200`, [easternToday, staffHotelId]),
+          db.query(`SELECT
+                      rt.renting_id,
+                      rt.room_id,
+                      rt.customer_id,
+                      p.legal_id AS customer_sin,
+                      rt.employee_id,
+                      rt.start_date,
+                      rt.end_date,
+                      rt.status
+                    FROM renting rt
+                    JOIN room rm ON rm.room_id = rt.room_id
+                    JOIN customer c ON c.customer_id = rt.customer_id
+                    JOIN person p ON p.person_id = c.person_id
+                    WHERE rm.hotel_id = $1
+                    ORDER BY rt.renting_id DESC LIMIT 200`, [staffHotelId])
+        ])
+      : await Promise.all([
+          db.query(`SELECT e.employee_id, p.first_name, p.last_name, h.hotel_name
+                    FROM employee e
+                    JOIN person p ON p.person_id = e.person_id
+                    JOIN hotel h ON h.hotel_id = e.hotel_id
+                    ORDER BY e.employee_id`),
+          db.query(`SELECT c.customer_id, p.legal_id, p.first_name, p.last_name
+                    FROM customer c
+                    JOIN person p ON p.person_id = c.person_id
+                    ORDER BY c.customer_id LIMIT 200`),
+          db.query(`SELECT r.room_id, r.room_number, h.hotel_name, h.city
+                    FROM room r
+                    JOIN hotel h ON h.hotel_id = r.hotel_id
+                    WHERE r.current_status = 'available'
+                    ORDER BY r.room_id LIMIT 200`),
+          db.query(`SELECT
+                      b.booking_id,
+                      b.room_id,
+                      b.customer_id,
+                      p.legal_id AS customer_sin,
+                      b.start_date,
+                      b.end_date,
+                      b.status
+                    FROM booking b
+                    JOIN customer c ON c.customer_id = b.customer_id
+                    JOIN person p ON p.person_id = c.person_id
+                    WHERE b.status IN ('reserved', 'checked_in')
+                      AND b.start_date = $1
+                    ORDER BY b.booking_id DESC LIMIT 200`, [easternToday]),
+          db.query(`SELECT
+                      rt.renting_id,
+                      rt.room_id,
+                      rt.customer_id,
+                      p.legal_id AS customer_sin,
+                      rt.employee_id,
+                      rt.start_date,
+                      rt.end_date,
+                      rt.status
+                    FROM renting rt
+                    JOIN customer c ON c.customer_id = rt.customer_id
+                    JOIN person p ON p.person_id = c.person_id
+                    ORDER BY rt.renting_id DESC LIMIT 200`)
+        ]);
 
     res.render('employee', {
       message: buildMessage(req.query),
@@ -1046,6 +1320,8 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
   const client = await db.getClient();
   try {
     const easternToday = easternTodayISO();
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const bookingId = parsePositiveInt(req.body.booking_id, 'Booking');
     const employeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
       ? parsePositiveInt(req.auth.employeeId, 'Employee')
@@ -1053,8 +1329,11 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
 
     await client.query('BEGIN');
     const bookingResult = await client.query(
-      `SELECT booking_id, room_id, customer_id, start_date, end_date, status
-       FROM booking WHERE booking_id = $1 FOR UPDATE`,
+      `SELECT b.booking_id, b.room_id, b.customer_id, b.start_date, b.end_date, b.status, rm.hotel_id
+       FROM booking b
+       JOIN room rm ON rm.room_id = b.room_id
+       WHERE b.booking_id = $1
+       FOR UPDATE`,
       [bookingId]
     );
 
@@ -1065,6 +1344,9 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
     const b = bookingResult.rows[0];
     if (!['reserved', 'checked_in'].includes(b.status)) {
       throw new Error('Booking cannot be transformed from current status.');
+    }
+    if (isStaffRole && b.hotel_id !== staffHotelId) {
+      throw new Error('You can only check in bookings from your assigned hotel.');
     }
     const bookingStartDate = typeof b.start_date === 'string'
       ? b.start_date.slice(0, 10)
@@ -1095,6 +1377,8 @@ app.post('/employee/rentings/direct', requireRole(['employee', 'manager', 'admin
   const { room_id, customer_sin, employee_id, start_date, end_date } = req.body;
   try {
     const easternToday = easternTodayISO();
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const roomId = parsePositiveInt(room_id, 'Room');
     const normalizedCustomerSin = normalizeSin(customer_sin, 'Customer SIN');
     const effectiveEmployeeId = req.auth.role === 'employee' || req.auth.role === 'manager'
@@ -1107,8 +1391,19 @@ app.post('/employee/rentings/direct', requireRole(['employee', 'manager', 'admin
     }
     ensureEndDateAfterStartDate(normalizedStartDate, normalizedEndDate);
 
+    const roomCheck = await db.query(
+      `SELECT room_id, hotel_id
+       FROM room
+       WHERE room_id = $1
+       LIMIT 1`,
+      [roomId]
+    );
+    if (roomCheck.rowCount === 0) {
+      throw new Error('Room not found.');
+    }
+
     const customerCheck = await db.query(
-      `SELECT c.customer_id
+      `SELECT c.customer_id, c.hotel_id
        FROM customer c
        JOIN person p ON p.person_id = c.person_id
        WHERE p.legal_id = $1
@@ -1117,6 +1412,14 @@ app.post('/employee/rentings/direct', requireRole(['employee', 'manager', 'admin
     );
     if (customerCheck.rowCount === 0) {
       throw new Error('No customer found with that SIN.');
+    }
+    if (isStaffRole) {
+      if (roomCheck.rows[0].hotel_id !== staffHotelId) {
+        throw new Error('You can only create rentings for rooms at your assigned hotel.');
+      }
+      if (customerCheck.rows[0].hotel_id !== staffHotelId) {
+        throw new Error('You can only create rentings for customers registered at your hotel.');
+      }
     }
     const customerId = customerCheck.rows[0].customer_id;
 
@@ -1160,29 +1463,81 @@ app.get('/views', requireRole(['admin']), async (req, res) => {
 
 app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   try {
-    const customers = await db.query(
-      `SELECT
-         c.customer_id,
-         c.registration_date,
-         p.person_id,
-         p.legal_id,
-         p.id_type,
-         p.first_name,
-         p.last_name,
-         p.email,
-         p.phone,
-         p.address_line,
-         a.account_id,
-         a.username,
-         a.is_active
-       FROM customer c
-       JOIN person p ON p.person_id = c.person_id
-       LEFT JOIN auth_account a
-         ON a.customer_id = c.customer_id
-        AND a.role = 'customer'
-       ORDER BY c.customer_id LIMIT 300`
-    );
-    res.render('manage/customers', { message: buildMessage(req.query), customers: customers.rows });
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
+
+    const customers = isStaffRole
+      ? await db.query(
+          `SELECT
+             c.customer_id,
+             c.hotel_id,
+             h.hotel_name,
+             c.registration_date,
+             p.person_id,
+             p.legal_id,
+             p.id_type,
+             p.first_name,
+             p.last_name,
+             p.email,
+             p.phone,
+             p.address_line,
+             a.account_id,
+             a.username,
+             a.is_active
+           FROM customer c
+           JOIN person p ON p.person_id = c.person_id
+           JOIN hotel h ON h.hotel_id = c.hotel_id
+           LEFT JOIN auth_account a
+             ON a.customer_id = c.customer_id
+            AND a.role = 'customer'
+           WHERE c.hotel_id = $1
+           ORDER BY c.customer_id
+           LIMIT 300`,
+          [staffHotelId]
+        )
+      : await db.query(
+          `SELECT
+             c.customer_id,
+             c.hotel_id,
+             h.hotel_name,
+             c.registration_date,
+             p.person_id,
+             p.legal_id,
+             p.id_type,
+             p.first_name,
+             p.last_name,
+             p.email,
+             p.phone,
+             p.address_line,
+             a.account_id,
+             a.username,
+             a.is_active
+           FROM customer c
+           JOIN person p ON p.person_id = c.person_id
+           JOIN hotel h ON h.hotel_id = c.hotel_id
+           LEFT JOIN auth_account a
+             ON a.customer_id = c.customer_id
+            AND a.role = 'customer'
+           ORDER BY c.customer_id
+           LIMIT 300`
+        );
+
+    const hotels = isStaffRole
+      ? await db.query(
+          `SELECT hotel_id, hotel_name
+           FROM hotel
+           WHERE hotel_id = $1`,
+          [staffHotelId]
+        )
+      : await db.query(`SELECT hotel_id, hotel_name FROM hotel ORDER BY hotel_id`);
+
+    res.render('manage/customers', {
+      message: buildMessage(req.query),
+      customers: customers.rows,
+      hotels: hotels.rows,
+      canChooseHotel: req.auth.role === 'admin',
+      staffHotelId
+    });
   } catch (err) {
     redirectWith(res, '/', err.message, 'error');
   }
@@ -1199,8 +1554,11 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
       email,
       phone,
       address_line,
+      hotel_id,
       registration_date
     } = req.body;
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const normalizedLegalId = normalizeSin(legal_id, 'SIN');
     const normalizedIdType = parseEnum(id_type, ['SIN'], 'ID type');
     const normalizedFirstName = normalizeString(first_name, 'First name', 80);
@@ -1208,6 +1566,7 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
+    const normalizedHotelId = isStaffRole ? staffHotelId : parsePositiveInt(hotel_id, 'Hotel');
     const normalizedRegistrationDate = parseDateInput(registration_date, 'Registration date');
 
     await client.query('BEGIN');
@@ -1225,10 +1584,10 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
       ]
     );
     const customer = await client.query(
-      `INSERT INTO customer (person_id, registration_date)
-       VALUES ($1, $2)
+      `INSERT INTO customer (person_id, hotel_id, registration_date)
+       VALUES ($1, $2, $3)
        RETURNING customer_id`,
-      [person.rows[0].person_id, normalizedRegistrationDate]
+      [person.rows[0].person_id, normalizedHotelId, normalizedRegistrationDate]
     );
     const customerId = customer.rows[0].customer_id;
     await client.query(
@@ -1250,24 +1609,41 @@ app.patch('/manage/customers/:id', requireRole(['employee', 'manager', 'admin'])
   const client = await db.getClient();
   try {
     const customerId = parsePositiveInt(req.params.id, 'Customer');
-    const { first_name, last_name, email, phone, address_line, registration_date } = req.body;
+    const { first_name, last_name, email, phone, address_line, registration_date, hotel_id } = req.body;
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
     const normalizedFirstName = normalizeString(first_name, 'First name', 80);
     const normalizedLastName = normalizeString(last_name, 'Last name', 80);
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
+    const normalizedHotelId = isStaffRole ? staffHotelId : parsePositiveInt(hotel_id, 'Hotel');
     const normalizedRegistrationDate = parseDateInput(registration_date, 'Registration date');
 
     await client.query('BEGIN');
-    const customer = await client.query('SELECT person_id FROM customer WHERE customer_id = $1', [customerId]);
+    const customer = await client.query(
+      `SELECT person_id, hotel_id
+       FROM customer
+       WHERE customer_id = $1
+       FOR UPDATE`,
+      [customerId]
+    );
     if (customer.rowCount === 0) throw new Error('Customer not found.');
+    if (isStaffRole && customer.rows[0].hotel_id !== staffHotelId) {
+      throw new Error('You can only update customers registered at your hotel.');
+    }
     const personId = customer.rows[0].person_id;
 
     await client.query(
       `UPDATE person SET first_name=$1, last_name=$2, email=$3, phone=$4, address_line=$5 WHERE person_id=$6`,
       [normalizedFirstName, normalizedLastName, normalizedEmail, normalizedPhone, normalizedAddress, personId]
     );
-    await client.query(`UPDATE customer SET registration_date=$1 WHERE customer_id=$2`, [normalizedRegistrationDate, customerId]);
+    await client.query(
+      `UPDATE customer
+       SET registration_date = $1, hotel_id = $2
+       WHERE customer_id = $3`,
+      [normalizedRegistrationDate, normalizedHotelId, customerId]
+    );
     await client.query('COMMIT');
     redirectWith(res, '/manage/customers', 'Customer updated.', 'success');
   } catch (err) {
@@ -1422,6 +1798,23 @@ app.post('/manage/employees', requireRole(['manager', 'admin']), async (req, res
     const normalizedPassword = normalizePassword(password);
 
     await client.query('BEGIN');
+    const hotelStaffCounts = await client.query(
+      `SELECT
+         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count,
+         SUM(CASE WHEN NOT is_manager THEN 1 ELSE 0 END)::INT AS employee_count
+       FROM employee
+       WHERE hotel_id = $1`,
+      [normalizedHotelId]
+    );
+    const managerCount = hotelStaffCounts.rows[0].manager_count || 0;
+    const employeeCount = hotelStaffCounts.rows[0].employee_count || 0;
+    if (normalizedAccountRole === 'manager' && managerCount >= 1) {
+      throw new Error('Each hotel can have only one manager account.');
+    }
+    if (normalizedAccountRole === 'employee' && employeeCount >= 3) {
+      throw new Error('Each hotel can have at most 3 employee accounts.');
+    }
+
     const person = await client.query(
       `INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, address_line)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING person_id`,
@@ -1515,6 +1908,24 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
     }
     if (currentAccount.account_role) {
       assertCanManageStaffAccount(req.auth.role, currentAccount.account_role);
+    }
+
+    const destinationStaffCounts = await client.query(
+      `SELECT
+         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count,
+         SUM(CASE WHEN NOT is_manager THEN 1 ELSE 0 END)::INT AS employee_count
+       FROM employee
+       WHERE hotel_id = $1
+         AND employee_id <> $2`,
+      [normalizedHotelId, employeeId]
+    );
+    const managerCount = destinationStaffCounts.rows[0].manager_count || 0;
+    const employeeCount = destinationStaffCounts.rows[0].employee_count || 0;
+    if (normalizedAccountRole === 'manager' && managerCount >= 1) {
+      throw new Error('Each hotel can have only one manager account.');
+    }
+    if (normalizedAccountRole === 'employee' && employeeCount >= 3) {
+      throw new Error('Each hotel can have at most 3 employee accounts.');
     }
 
     await client.query(
@@ -1897,6 +2308,8 @@ async function startServer() {
   try {
     await initializeDatabaseIfNeeded();
     await ensurePersonSinSchemaAndData();
+    await ensureCustomerHotelSchemaAndData();
+    await ensureHotelCoverageBaseline();
     await ensureAuthSchemaAndSeed();
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
