@@ -1092,128 +1092,107 @@ async function ensureRoomCompatibilitySchemaAndData() {
     return;
   }
 
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS hotel_room_id INT`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS room_capacity VARCHAR(20)`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS price NUMERIC(10, 2)`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS view VARCHAR(20)`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS status VARCHAR(20)`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS extendable BOOLEAN`);
-  await db.query(`ALTER TABLE room ADD COLUMN IF NOT EXISTS problems TEXT`);
-
-  await db.query(`
-    UPDATE room
-    SET
-      hotel_room_id = hotel_id,
-      room_capacity = capacity,
-      price = base_price,
-      view = CASE
-        WHEN has_sea_view AND has_mountain_view THEN 'sea_mountain'
-        WHEN has_sea_view THEN 'sea'
-        WHEN has_mountain_view THEN 'mountain'
-        ELSE 'city'
-      END,
-      status = current_status,
-      extendable = is_extendable,
-      problems = issues
-    WHERE hotel_room_id IS DISTINCT FROM hotel_id
-       OR room_capacity IS DISTINCT FROM capacity
-       OR price IS DISTINCT FROM base_price
-       OR view IS NULL
-       OR status IS DISTINCT FROM current_status
-       OR extendable IS DISTINCT FROM is_extendable
-       OR problems IS DISTINCT FROM issues
+  const legacyColumns = ['hotel_room_id', 'room_capacity', 'price', 'view', 'status', 'extendable', 'problems'];
+  const roomColumns = await db.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'room'
   `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_hotel_room_id_fkey`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_hotel_room_id_fkey
-    FOREIGN KEY (hotel_room_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE
-  `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_room_capacity_check`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_room_capacity_check
-    CHECK (room_capacity IS NULL OR room_capacity IN ('single', 'double', 'suite', 'family'))
-  `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_price_check`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_price_check
-    CHECK (price IS NULL OR price > 0)
-  `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_view_check`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_view_check
-    CHECK (view IS NULL OR view IN ('city', 'sea', 'mountain', 'sea_mountain'))
-  `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_status_check_compat`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_status_check_compat
-    CHECK (status IS NULL OR status IN ('available', 'booked', 'rented', 'maintenance'))
-  `);
-
-  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_compat_hotel_match_check`);
-  await db.query(`
-    ALTER TABLE room
-    ADD CONSTRAINT room_compat_hotel_match_check
-    CHECK (hotel_room_id IS NULL OR hotel_room_id = hotel_id)
-  `);
-
-  await db.query(`
-    CREATE OR REPLACE FUNCTION fn_sync_room_compatibility_columns()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      NEW.hotel_id := COALESCE(NEW.hotel_id, NEW.hotel_room_id);
-      NEW.hotel_room_id := NEW.hotel_id;
-
-      NEW.capacity := COALESCE(NEW.capacity, NEW.room_capacity);
-      NEW.room_capacity := NEW.capacity;
-
-      NEW.base_price := COALESCE(NEW.base_price, NEW.price);
-      NEW.price := NEW.base_price;
-
-      NEW.current_status := COALESCE(NEW.current_status, NEW.status);
-      NEW.status := NEW.current_status;
-
-      NEW.is_extendable := COALESCE(NEW.is_extendable, NEW.extendable);
-      NEW.extendable := NEW.is_extendable;
-
-      NEW.issues := COALESCE(NEW.issues, NEW.problems);
-      NEW.problems := NEW.issues;
-
-      IF NEW.view IS NOT NULL THEN
-        NEW.has_sea_view := NEW.view IN ('sea', 'sea_mountain');
-        NEW.has_mountain_view := NEW.view IN ('mountain', 'sea_mountain');
-      ELSE
-        NEW.view := CASE
-          WHEN COALESCE(NEW.has_sea_view, FALSE) AND COALESCE(NEW.has_mountain_view, FALSE) THEN 'sea_mountain'
-          WHEN COALESCE(NEW.has_sea_view, FALSE) THEN 'sea'
-          WHEN COALESCE(NEW.has_mountain_view, FALSE) THEN 'mountain'
-          ELSE 'city'
-        END;
-      END IF;
-
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql
-  `);
+  const existingColumns = new Set(roomColumns.rows.map((row) => row.column_name));
 
   await db.query(`DROP TRIGGER IF EXISTS trg_room_sync_compatibility ON room`);
-  await db.query(`
-    CREATE TRIGGER trg_room_sync_compatibility
-    BEFORE INSERT OR UPDATE ON room
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_sync_room_compatibility_columns()
-  `);
+  await db.query(`DROP FUNCTION IF EXISTS fn_sync_room_compatibility_columns()`);
 
-  // Populate issues for a subset of rooms (not all), and mirror into problems.
+  if (existingColumns.has('hotel_room_id')) {
+    await db.query(`
+      UPDATE room
+      SET hotel_id = COALESCE(hotel_id, hotel_room_id)
+      WHERE hotel_id IS NULL
+        AND hotel_room_id IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('room_capacity')) {
+    await db.query(`
+      UPDATE room
+      SET capacity = COALESCE(capacity, room_capacity)
+      WHERE capacity IS NULL
+        AND room_capacity IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('price')) {
+    await db.query(`
+      UPDATE room
+      SET base_price = COALESCE(base_price, price)
+      WHERE base_price IS NULL
+        AND price IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('status')) {
+    await db.query(`
+      UPDATE room
+      SET current_status = COALESCE(current_status, status)
+      WHERE current_status IS NULL
+        AND status IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('extendable')) {
+    await db.query(`
+      UPDATE room
+      SET is_extendable = COALESCE(is_extendable, extendable)
+      WHERE is_extendable IS NULL
+        AND extendable IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('problems')) {
+    await db.query(`
+      UPDATE room
+      SET issues = COALESCE(issues, problems)
+      WHERE issues IS NULL
+        AND problems IS NOT NULL
+    `);
+  }
+
+  if (existingColumns.has('view')) {
+    await db.query(`
+      UPDATE room
+      SET
+        has_sea_view = (view IN ('sea', 'sea_mountain')),
+        has_mountain_view = (view IN ('mountain', 'sea_mountain'))
+      WHERE view IS NOT NULL
+        AND (
+          has_sea_view IS DISTINCT FROM (view IN ('sea', 'sea_mountain'))
+          OR has_mountain_view IS DISTINCT FROM (view IN ('mountain', 'sea_mountain'))
+        )
+    `);
+  }
+
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_hotel_room_id_fkey`);
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_room_capacity_check`);
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_price_check`);
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_view_check`);
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_status_check_compat`);
+  await db.query(`ALTER TABLE room DROP CONSTRAINT IF EXISTS room_compat_hotel_match_check`);
+
+  if (legacyColumns.some((column) => existingColumns.has(column))) {
+    await db.query(`
+      ALTER TABLE room
+      DROP COLUMN IF EXISTS hotel_room_id,
+      DROP COLUMN IF EXISTS room_capacity,
+      DROP COLUMN IF EXISTS price,
+      DROP COLUMN IF EXISTS view,
+      DROP COLUMN IF EXISTS status,
+      DROP COLUMN IF EXISTS extendable,
+      DROP COLUMN IF EXISTS problems
+    `);
+  }
+
+  // Populate issues for a subset of rooms (not all).
   await db.query(`
     WITH candidates AS (
       SELECT
@@ -1229,12 +1208,6 @@ async function ensureRoomCompatibilitySchemaAndData() {
     )
     UPDATE room r
     SET issues = CASE (picked.rn % 4)
-          WHEN 0 THEN 'Minor paint damage near balcony door'
-          WHEN 1 THEN 'AC filter noise at high fan speed'
-          WHEN 2 THEN 'Bathroom sink drains slowly'
-          ELSE 'Desk lamp flickers intermittently'
-        END,
-        problems = CASE (picked.rn % 4)
           WHEN 0 THEN 'Minor paint damage near balcony door'
           WHEN 1 THEN 'AC filter noise at high fan speed'
           WHEN 2 THEN 'Bathroom sink drains slowly'

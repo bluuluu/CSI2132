@@ -97,28 +97,18 @@ CREATE TABLE auth_account (
 CREATE TABLE room (
   room_id SERIAL PRIMARY KEY,
   hotel_id INT NOT NULL,
-  hotel_room_id INT,
   room_number VARCHAR(10) NOT NULL,
   capacity VARCHAR(20) NOT NULL CHECK (capacity IN ('single', 'double', 'suite', 'family')),
-  room_capacity VARCHAR(20) CHECK (room_capacity IS NULL OR room_capacity IN ('single', 'double', 'suite', 'family')),
   base_price NUMERIC(10, 2) NOT NULL CHECK (base_price > 0),
-  price NUMERIC(10, 2) CHECK (price IS NULL OR price > 0),
   has_sea_view BOOLEAN NOT NULL DEFAULT FALSE,
   has_mountain_view BOOLEAN NOT NULL DEFAULT FALSE,
-  view VARCHAR(20) CHECK (view IS NULL OR view IN ('city', 'sea', 'mountain', 'sea_mountain')),
   is_extendable BOOLEAN NOT NULL DEFAULT FALSE,
-  extendable BOOLEAN,
   amenities TEXT NOT NULL,
   issues TEXT,
-  problems TEXT,
   current_status VARCHAR(20) NOT NULL DEFAULT 'available'
     CHECK (current_status IN ('available', 'booked', 'rented', 'maintenance')),
-  status VARCHAR(20) CHECK (status IS NULL OR status IN ('available', 'booked', 'rented', 'maintenance')),
-  CHECK (hotel_room_id IS NULL OR hotel_room_id = hotel_id),
   CONSTRAINT fk_room_hotel
     FOREIGN KEY (hotel_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE,
-  CONSTRAINT fk_room_hotel_room
-    FOREIGN KEY (hotel_room_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE,
   UNIQUE (hotel_id, room_number)
 );
 
