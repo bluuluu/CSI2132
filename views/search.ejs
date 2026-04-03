@@ -106,7 +106,7 @@
                 View Calendar
               </button>
               <% if (nextUnavailable) { %>
-                <div class="helper-line">Unavailable: <strong><%= nextUnavailable.start_date %></strong> to <strong><%= nextUnavailable.end_date %></strong></div>
+                <div class="helper-line">Unavailable: <strong><%= nextUnavailable.start_date %></strong> up to checkout on <strong><%= nextUnavailable.end_date %></strong></div>
               <% } else { %>
                 <div class="helper-line">No blocked dates on record.</div>
               <% } %>
@@ -237,7 +237,7 @@
         const start = toUtcDate(range.start_date);
         const end = toUtcDate(range.end_date);
         let cursor = start > today ? start : new Date(today.getTime());
-        while (cursor <= end && cursor <= horizon) {
+        while (cursor < end && cursor <= horizon) {
           unavailable.add(toIsoDate(cursor));
           cursor = new Date(cursor.getTime());
           cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -309,7 +309,7 @@
       if (!ranges.length) {
         modalRanges.textContent = 'No unavailable date ranges recorded for the upcoming months.';
       } else {
-        const formatted = ranges.map((range) => `${range.start_date} to ${range.end_date} (${range.source_type})`);
+        const formatted = ranges.map((range) => `${range.start_date} to checkout ${range.end_date} (${range.source_type})`);
         modalRanges.textContent = `Unavailable ranges: ${formatted.join(' | ')}`;
       }
     };

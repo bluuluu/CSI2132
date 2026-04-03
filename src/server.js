@@ -1613,14 +1613,14 @@ app.get('/search', async (req, res) => {
         SELECT 1 FROM booking b
         WHERE b.room_id = r.room_id
           AND b.status IN ('reserved', 'checked_in')
-          AND daterange(b.start_date, b.end_date, '[]') && daterange($${s1}, $${e1}, '[]')
+          AND daterange(b.start_date, b.end_date, '[)') && daterange($${s1}, $${e1}, '[)')
       )`);
 
       conditions.push(`NOT EXISTS (
         SELECT 1 FROM renting rt
         WHERE rt.room_id = r.room_id
           AND rt.status = 'active'
-          AND daterange(rt.start_date, rt.end_date, '[]') && daterange($${s2}, $${e2}, '[]')
+          AND daterange(rt.start_date, rt.end_date, '[)') && daterange($${s2}, $${e2}, '[)')
       )`);
     }
 
@@ -1665,7 +1665,7 @@ app.get('/search', async (req, res) => {
            FROM booking b
            WHERE b.status IN ('reserved', 'checked_in')
              AND b.room_id = ANY($1::int[])
-             AND b.end_date >= $2::date
+             AND b.end_date > $2::date
            UNION ALL
            SELECT
              rt.room_id,
@@ -1675,7 +1675,7 @@ app.get('/search', async (req, res) => {
            FROM renting rt
            WHERE rt.status = 'active'
              AND rt.room_id = ANY($1::int[])
-             AND rt.end_date >= $2::date
+             AND rt.end_date > $2::date
          ) u
          ORDER BY room_id, start_date, end_date`,
         [roomIds, easternToday]

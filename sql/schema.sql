@@ -204,7 +204,7 @@ BEGIN
       WHERE b.room_id = NEW.room_id
         AND b.status IN ('reserved', 'checked_in')
         AND b.booking_id <> COALESCE(NEW.booking_id, -1)
-        AND daterange(b.start_date, b.end_date, '[]') && daterange(NEW.start_date, NEW.end_date, '[]');
+        AND daterange(b.start_date, b.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
 
       IF overlap_count > 0 THEN
         RAISE EXCEPTION 'Room % already has an overlapping booking', NEW.room_id;
@@ -214,10 +214,31 @@ BEGIN
       FROM renting r
       WHERE r.room_id = NEW.room_id
         AND r.status = 'active'
-        AND daterange(r.start_date, r.end_date, '[]') && daterange(NEW.start_date, NEW.end_date, '[]');
+        AND daterange(r.start_date, r.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
 
       IF overlap_count > 0 THEN
         RAISE EXCEPTION 'Room % already has an overlapping renting', NEW.room_id;
+      END IF;
+
+      SELECT COUNT(*) INTO overlap_count
+      FROM booking b
+      WHERE b.customer_id = NEW.customer_id
+        AND b.status IN ('reserved', 'checked_in')
+        AND b.booking_id <> COALESCE(NEW.booking_id, -1)
+        AND daterange(b.start_date, b.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
+
+      IF overlap_count > 0 THEN
+        RAISE EXCEPTION 'Customer % already has an overlapping booking', NEW.customer_id;
+      END IF;
+
+      SELECT COUNT(*) INTO overlap_count
+      FROM renting r
+      WHERE r.customer_id = NEW.customer_id
+        AND r.status = 'active'
+        AND daterange(r.start_date, r.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
+
+      IF overlap_count > 0 THEN
+        RAISE EXCEPTION 'Customer % already has an overlapping renting', NEW.customer_id;
       END IF;
     END IF;
   ELSIF TG_TABLE_NAME = 'renting' THEN
@@ -227,7 +248,7 @@ BEGIN
       WHERE r.room_id = NEW.room_id
         AND r.status = 'active'
         AND r.renting_id <> COALESCE(NEW.renting_id, -1)
-        AND daterange(r.start_date, r.end_date, '[]') && daterange(NEW.start_date, NEW.end_date, '[]');
+        AND daterange(r.start_date, r.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
 
       IF overlap_count > 0 THEN
         RAISE EXCEPTION 'Room % already has an overlapping renting', NEW.room_id;
@@ -238,10 +259,32 @@ BEGIN
       WHERE b.room_id = NEW.room_id
         AND b.status IN ('reserved', 'checked_in')
         AND (NEW.source_booking_id IS NULL OR b.booking_id <> NEW.source_booking_id)
-        AND daterange(b.start_date, b.end_date, '[]') && daterange(NEW.start_date, NEW.end_date, '[]');
+        AND daterange(b.start_date, b.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
 
       IF overlap_count > 0 THEN
         RAISE EXCEPTION 'Room % already has an overlapping booking', NEW.room_id;
+      END IF;
+
+      SELECT COUNT(*) INTO overlap_count
+      FROM renting r
+      WHERE r.customer_id = NEW.customer_id
+        AND r.status = 'active'
+        AND r.renting_id <> COALESCE(NEW.renting_id, -1)
+        AND daterange(r.start_date, r.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
+
+      IF overlap_count > 0 THEN
+        RAISE EXCEPTION 'Customer % already has an overlapping renting', NEW.customer_id;
+      END IF;
+
+      SELECT COUNT(*) INTO overlap_count
+      FROM booking b
+      WHERE b.customer_id = NEW.customer_id
+        AND b.status IN ('reserved', 'checked_in')
+        AND (NEW.source_booking_id IS NULL OR b.booking_id <> NEW.source_booking_id)
+        AND daterange(b.start_date, b.end_date, '[)') && daterange(NEW.start_date, NEW.end_date, '[)');
+
+      IF overlap_count > 0 THEN
+        RAISE EXCEPTION 'Customer % already has an overlapping booking', NEW.customer_id;
       END IF;
     END IF;
   END IF;
@@ -260,14 +303,14 @@ BEGIN
     SELECT 1 FROM renting r
     WHERE r.room_id = target_room_id
       AND r.status = 'active'
-      AND daterange(r.start_date, r.end_date, '[]') && daterange(CURRENT_DATE, CURRENT_DATE, '[]')
+      AND daterange(r.start_date, r.end_date, '[)') @> CURRENT_DATE
   ) INTO has_renting;
 
   SELECT EXISTS (
     SELECT 1 FROM booking b
     WHERE b.room_id = target_room_id
       AND b.status IN ('reserved', 'checked_in')
-      AND daterange(b.start_date, b.end_date, '[]') && daterange(CURRENT_DATE, CURRENT_DATE, '[]')
+      AND daterange(b.start_date, b.end_date, '[)') @> CURRENT_DATE
   ) INTO has_booking;
 
   UPDATE room
@@ -512,7 +555,9 @@ WHERE rt.status IN ('completed', 'cancelled')
 CREATE INDEX idx_room_capacity_price_status ON room(capacity, base_price, current_status);
 CREATE INDEX idx_hotel_filtering ON hotel(chain_id, category, total_rooms);
 CREATE INDEX idx_booking_room_dates ON booking(room_id, start_date, end_date);
+CREATE INDEX idx_booking_customer_dates ON booking(customer_id, start_date, end_date);
 CREATE INDEX idx_renting_room_dates ON renting(room_id, start_date, end_date);
+CREATE INDEX idx_renting_customer_dates ON renting(customer_id, start_date, end_date);
 CREATE INDEX idx_auth_account_role_active ON auth_account(role, is_active);
 
 CREATE OR REPLACE VIEW v_available_rooms_per_area AS

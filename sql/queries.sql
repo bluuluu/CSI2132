@@ -55,14 +55,14 @@ WHERE r.current_status = 'available'
     FROM booking b
     WHERE b.room_id = r.room_id
       AND b.status IN ('reserved', 'checked_in')
-      AND daterange(b.start_date, b.end_date, '[]') && daterange(DATE '2026-04-15', DATE '2026-04-20', '[]')
+      AND daterange(b.start_date, b.end_date, '[)') && daterange(DATE '2026-04-15', DATE '2026-04-20', '[)')
   )
   AND NOT EXISTS (
     SELECT 1
     FROM renting rt
     WHERE rt.room_id = r.room_id
       AND rt.status = 'active'
-      AND daterange(rt.start_date, rt.end_date, '[]') && daterange(DATE '2026-04-15', DATE '2026-04-20', '[]')
+      AND daterange(rt.start_date, rt.end_date, '[)') && daterange(DATE '2026-04-15', DATE '2026-04-20', '[)')
   )
 ORDER BY r.base_price;
 
