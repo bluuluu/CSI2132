@@ -166,7 +166,15 @@ CREATE TABLE archive (
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   final_status VARCHAR(20) NOT NULL,
-  archived_at TIMESTAMP NOT NULL DEFAULT NOW()
+  archived_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_archive_source_booking
+    FOREIGN KEY (source_booking_id) REFERENCES booking(booking_id) ON DELETE SET NULL,
+  CONSTRAINT fk_archive_source_renting
+    FOREIGN KEY (source_renting_id) REFERENCES renting(renting_id) ON DELETE SET NULL,
+  CONSTRAINT chk_archive_record_type_sources CHECK (
+    (record_type = 'booking' AND source_renting_id IS NULL)
+    OR (record_type = 'renting')
+  )
 );
 
 CREATE TABLE payment (

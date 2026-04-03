@@ -184,7 +184,7 @@ You can also start from `/login` and choose a role card.
 
 ## Notes
 
-- Archive records are stored without hard foreign keys to mutable entities so they remain available even if rooms/customers are deleted later.
+- Archive records keep nullable foreign keys to booking/renting (`ON DELETE SET NULL`) so history rows remain available even if source rows are deleted.
 - Archive history intentionally excludes payment-history fields (per rubric requirement).
 - Customer self-disable and self-delete are blocked while active/reserved stays exist; staff can still manage customer account status from their panel.
 - The UI is intentionally form-driven to match project rubric requirements for non-SQL users.

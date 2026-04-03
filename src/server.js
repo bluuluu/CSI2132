@@ -624,6 +624,8 @@ async function ensurePersonSinSchemaAndData() {
 
     await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_person_id_fkey`);
     await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_legal_id_fkey`);
+    await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS fk_${tableName}_person`);
+    await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS fk_${tableName}_legal_id`);
     await db.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS ${tableName}_legal_id_key`);
     await db.query(`ALTER TABLE ${tableName} ALTER COLUMN legal_id TYPE VARCHAR(9)`);
     await db.query(`ALTER TABLE ${tableName} ALTER COLUMN legal_id SET NOT NULL`);
@@ -771,6 +773,54 @@ async function ensureArchiveSchemaAndData() {
   }
 
   await db.query(`ALTER TABLE archive DROP COLUMN IF EXISTS amount_paid`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS fk_archive_source_booking`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS fk_archive_source_renting`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS archive_source_booking_id_fkey`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS archive_source_renting_id_fkey`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS chk_archive_record_type_sources`);
+  await db.query(`ALTER TABLE archive DROP CONSTRAINT IF EXISTS chk_archive_record_source_match`);
+  await db.query(`
+    UPDATE archive a
+    SET source_booking_id = NULL
+    WHERE source_booking_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM booking b
+        WHERE b.booking_id = a.source_booking_id
+      )
+  `);
+  await db.query(`
+    UPDATE archive a
+    SET source_renting_id = NULL
+    WHERE source_renting_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM renting rt
+        WHERE rt.renting_id = a.source_renting_id
+      )
+  `);
+  await db.query(`
+    UPDATE archive
+    SET source_renting_id = NULL
+    WHERE record_type = 'booking'
+  `);
+  await db.query(`
+    ALTER TABLE archive
+    ADD CONSTRAINT fk_archive_source_booking
+    FOREIGN KEY (source_booking_id) REFERENCES booking(booking_id) ON DELETE SET NULL
+  `);
+  await db.query(`
+    ALTER TABLE archive
+    ADD CONSTRAINT fk_archive_source_renting
+    FOREIGN KEY (source_renting_id) REFERENCES renting(renting_id) ON DELETE SET NULL
+  `);
+  await db.query(`
+    ALTER TABLE archive
+    ADD CONSTRAINT chk_archive_record_type_sources CHECK (
+      (record_type = 'booking' AND source_renting_id IS NULL)
+      OR (record_type = 'renting')
+    )
+  `);
 
   await db.query(`
     CREATE OR REPLACE FUNCTION fn_archive_booking()
