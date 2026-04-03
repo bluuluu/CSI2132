@@ -1,7 +1,7 @@
 <%- include('../partials/header', { title: 'Manage Customers', message }) %>
 <% const canDeleteCustomers = ['employee', 'manager', 'admin'].includes(auth.role); %>
 <% const showAdminAccountDetails = auth.role === 'admin'; %>
-<% const customerColumnCount = showAdminAccountDetails ? (canDeleteCustomers ? 11 : 10) : (canDeleteCustomers ? 10 : 9); %>
+<% const customerColumnCount = showAdminAccountDetails ? (canDeleteCustomers ? 12 : 11) : (canDeleteCustomers ? 10 : 9); %>
 
 <section class="page-intro">
   <h2>Customer Records</h2>
@@ -63,6 +63,7 @@
           <th>Registration</th>
           <% if (showAdminAccountDetails) { %>
             <th>Username</th>
+            <th>Password</th>
           <% } %>
           <th>Account Status</th>
           <th>Update</th>
@@ -84,6 +85,7 @@
             <td><%= c.registration_date.toISOString().slice(0,10) %></td>
             <% if (showAdminAccountDetails) { %>
               <td><%= c.username || `customer${c.customer_id}` %></td>
+              <td><%= c.account_id ? c.password_plain : '-' %></td>
             <% } %>
             <td>
               <% if (!c.account_id) { %>

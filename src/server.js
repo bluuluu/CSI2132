@@ -2653,7 +2653,6 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              COALESCE(h.hotel_name, 'Unassigned') AS hotel_name,
              c.registration_date,
              p.legal_id,
-             p.legal_id,
              p.id_type,
              p.first_name,
              p.last_name,
@@ -2662,6 +2661,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              p.address_line,
              a.account_id,
              a.username,
+             NULL::text AS password_plain,
              a.is_active
            FROM customer c
            JOIN person p ON p.legal_id = c.legal_id
@@ -2681,7 +2681,6 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              COALESCE(h.hotel_name, 'Unassigned') AS hotel_name,
              c.registration_date,
              p.legal_id,
-             p.legal_id,
              p.id_type,
              p.first_name,
              p.last_name,
@@ -2690,6 +2689,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
              p.address_line,
              a.account_id,
              a.username,
+             a.password_plain,
              a.is_active
            FROM customer c
            JOIN person p ON p.legal_id = c.legal_id
@@ -2914,7 +2914,6 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              e.role_title,
              e.hired_on,
              p.legal_id,
-             p.legal_id,
              p.first_name,
              p.last_name,
              p.email,
@@ -2923,6 +2922,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              a.account_id,
              a.role AS account_role,
              a.username,
+             NULL::text AS password_plain,
              a.is_active
            FROM employee e
            JOIN person p ON p.legal_id = e.legal_id
@@ -2942,7 +2942,6 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              e.role_title,
              e.hired_on,
              p.legal_id,
-             p.legal_id,
              p.first_name,
              p.last_name,
              p.email,
@@ -2951,6 +2950,7 @@ app.get('/manage/employees', requireRole(['manager', 'admin']), async (req, res)
              a.account_id,
              a.role AS account_role,
              a.username,
+             a.password_plain,
              a.is_active
            FROM employee e
            JOIN person p ON p.legal_id = e.legal_id

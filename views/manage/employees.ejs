@@ -1,5 +1,6 @@
 <%- include('../partials/header', { title: 'Manage Staff Accounts', message }) %>
-<% const staffColumnCount = 11; %>
+<% const showAdminPasswords = auth.role === 'admin'; %>
+<% const staffColumnCount = showAdminPasswords ? 12 : 11; %>
 
 <section class="page-intro">
   <h2>Staff Accounts</h2>
@@ -84,6 +85,7 @@
           <th>Role Title</th>
           <th>Account Role</th>
           <th>Username</th>
+          <% if (showAdminPasswords) { %><th>Password</th><% } %>
           <th>Status</th>
           <th>Update</th>
           <th>Enable/Disable</th>
@@ -103,6 +105,7 @@
             <td><%= e.role_title %></td>
             <td><%= e.account_role %></td>
             <td><%= e.username %></td>
+            <% if (showAdminPasswords) { %><td><%= e.password_plain %></td><% } %>
             <td>
               <span class="status-badge <%= e.is_active ? 'status-active' : 'status-cancelled' %>">
                 <%= e.is_active ? 'active' : 'inactive' %>

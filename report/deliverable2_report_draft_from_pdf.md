@@ -60,6 +60,16 @@ npm run dev
 9. Open:
 - `http://localhost:3000`
 
+### Exact Current Database Snapshot (for Corrector/TA)
+
+If the corrector should use the **exact same DB state** as your latest local environment (not just fresh seed), use:
+
+```bash
+psql -d ehotels -f sql/current_database_dump.sql
+```
+
+This file includes schema + data exactly as exported from the current local `ehotels` database, with `--clean --if-exists` so existing objects are replaced during restore.
+
 ## 3) DDL Statements and Database Definition
 
 ### 1c) List of DDL statements creating the database
@@ -170,6 +180,7 @@ Implemented functionality includes:
    - `sql/schema.sql`
    - `sql/seed.sql`
    - `sql/queries.sql`
+   - `sql/current_database_dump.sql` (exact exported DB snapshot)
 3. Application code:
    - `src/`
    - `views/`

@@ -26,7 +26,7 @@ CREATE TABLE hotel_chain (
 
 CREATE TABLE hotel (
   hotel_id SERIAL PRIMARY KEY,
-  chain_id INT NOT NULL REFERENCES hotel_chain(chain_id) ON DELETE CASCADE,
+  chain_id INT NOT NULL,
   hotel_name VARCHAR(140) NOT NULL,
   category SMALLINT NOT NULL CHECK (category BETWEEN 1 AND 5),
   total_rooms INT NOT NULL CHECK (total_rooms >= 1),
@@ -34,6 +34,8 @@ CREATE TABLE hotel (
   contact_email VARCHAR(120) NOT NULL,
   contact_phone VARCHAR(30) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_hotel_chain
+    FOREIGN KEY (chain_id) REFERENCES hotel_chain(chain_id) ON DELETE CASCADE,
   UNIQUE(chain_id, hotel_name)
 );
 
@@ -50,18 +52,26 @@ CREATE TABLE person (
 
 CREATE TABLE customer (
   customer_id SERIAL PRIMARY KEY,
-  legal_id VARCHAR(9) NOT NULL UNIQUE REFERENCES person(legal_id) ON DELETE CASCADE,
-  hotel_id INT REFERENCES hotel(hotel_id) ON DELETE SET NULL,
-  registration_date DATE NOT NULL DEFAULT CURRENT_DATE
+  legal_id VARCHAR(9) NOT NULL UNIQUE,
+  hotel_id INT,
+  registration_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  CONSTRAINT fk_customer_person
+    FOREIGN KEY (legal_id) REFERENCES person(legal_id) ON DELETE CASCADE,
+  CONSTRAINT fk_customer_hotel
+    FOREIGN KEY (hotel_id) REFERENCES hotel(hotel_id) ON DELETE SET NULL
 );
 
 CREATE TABLE employee (
   employee_id SERIAL PRIMARY KEY,
-  legal_id VARCHAR(9) NOT NULL UNIQUE REFERENCES person(legal_id) ON DELETE CASCADE,
-  hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE CASCADE,
+  legal_id VARCHAR(9) NOT NULL UNIQUE,
+  hotel_id INT NOT NULL,
   role_title VARCHAR(80) NOT NULL,
   hired_on DATE NOT NULL DEFAULT CURRENT_DATE,
-  is_manager BOOLEAN NOT NULL DEFAULT FALSE
+  is_manager BOOLEAN NOT NULL DEFAULT FALSE,
+  CONSTRAINT fk_employee_person
+    FOREIGN KEY (legal_id) REFERENCES person(legal_id) ON DELETE CASCADE,
+  CONSTRAINT fk_employee_hotel
+    FOREIGN KEY (hotel_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE
 );
 
 CREATE TABLE auth_account (
@@ -69,10 +79,14 @@ CREATE TABLE auth_account (
   role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'employee', 'customer')),
   username VARCHAR(60) NOT NULL UNIQUE,
   password_plain VARCHAR(120) NOT NULL,
-  employee_id INT UNIQUE REFERENCES employee(employee_id) ON DELETE CASCADE,
-  customer_id INT UNIQUE REFERENCES customer(customer_id) ON DELETE CASCADE,
+  employee_id INT UNIQUE,
+  customer_id INT UNIQUE,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_auth_account_employee
+    FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE CASCADE,
+  CONSTRAINT fk_auth_account_customer
+    FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE CASCADE,
   CHECK (
     (role = 'admin' AND employee_id IS NULL AND customer_id IS NULL)
     OR (role IN ('manager', 'employee') AND employee_id IS NOT NULL AND customer_id IS NULL)
@@ -82,8 +96,8 @@ CREATE TABLE auth_account (
 
 CREATE TABLE room (
   room_id SERIAL PRIMARY KEY,
-  hotel_id INT NOT NULL REFERENCES hotel(hotel_id) ON DELETE CASCADE,
-  hotel_room_id INT REFERENCES hotel(hotel_id) ON DELETE CASCADE,
+  hotel_id INT NOT NULL,
+  hotel_room_id INT,
   room_number VARCHAR(10) NOT NULL,
   capacity VARCHAR(20) NOT NULL CHECK (capacity IN ('single', 'double', 'suite', 'family')),
   room_capacity VARCHAR(20) CHECK (room_capacity IS NULL OR room_capacity IN ('single', 'double', 'suite', 'family')),
@@ -101,33 +115,51 @@ CREATE TABLE room (
     CHECK (current_status IN ('available', 'booked', 'rented', 'maintenance')),
   status VARCHAR(20) CHECK (status IS NULL OR status IN ('available', 'booked', 'rented', 'maintenance')),
   CHECK (hotel_room_id IS NULL OR hotel_room_id = hotel_id),
+  CONSTRAINT fk_room_hotel
+    FOREIGN KEY (hotel_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE,
+  CONSTRAINT fk_room_hotel_room
+    FOREIGN KEY (hotel_room_id) REFERENCES hotel(hotel_id) ON DELETE CASCADE,
   UNIQUE (hotel_id, room_number)
 );
 
 CREATE TABLE booking (
   booking_id SERIAL PRIMARY KEY,
-  room_id INT NOT NULL REFERENCES room(room_id) ON DELETE CASCADE,
-  customer_id INT NOT NULL REFERENCES customer(customer_id) ON DELETE CASCADE,
-  created_by_employee_id INT REFERENCES employee(employee_id) ON DELETE SET NULL,
+  room_id INT NOT NULL,
+  customer_id INT NOT NULL,
+  created_by_employee_id INT,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'reserved'
     CHECK (status IN ('reserved', 'checked_in', 'cancelled', 'completed')),
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_booking_room
+    FOREIGN KEY (room_id) REFERENCES room(room_id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_customer
+    FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_created_by_employee
+    FOREIGN KEY (created_by_employee_id) REFERENCES employee(employee_id) ON DELETE SET NULL,
   CHECK (end_date > start_date)
 );
 
 CREATE TABLE renting (
   renting_id SERIAL PRIMARY KEY,
-  room_id INT NOT NULL REFERENCES room(room_id) ON DELETE CASCADE,
-  customer_id INT NOT NULL REFERENCES customer(customer_id) ON DELETE CASCADE,
-  employee_id INT NOT NULL REFERENCES employee(employee_id) ON DELETE RESTRICT,
-  source_booking_id INT REFERENCES booking(booking_id) ON DELETE SET NULL,
+  room_id INT NOT NULL,
+  customer_id INT NOT NULL,
+  employee_id INT NOT NULL,
+  source_booking_id INT,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'completed', 'cancelled')),
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_renting_room
+    FOREIGN KEY (room_id) REFERENCES room(room_id) ON DELETE CASCADE,
+  CONSTRAINT fk_renting_customer
+    FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE CASCADE,
+  CONSTRAINT fk_renting_employee
+    FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_renting_source_booking
+    FOREIGN KEY (source_booking_id) REFERENCES booking(booking_id) ON DELETE SET NULL,
   CHECK (end_date > start_date)
 );
 
@@ -149,11 +181,15 @@ CREATE TABLE archive (
 
 CREATE TABLE payment (
   payment_id SERIAL PRIMARY KEY,
-  renting_id INT NOT NULL REFERENCES renting(renting_id) ON DELETE CASCADE,
-  employee_id INT NOT NULL REFERENCES employee(employee_id) ON DELETE RESTRICT,
+  renting_id INT NOT NULL,
+  employee_id INT NOT NULL,
   amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
   method VARCHAR(20) NOT NULL CHECK (method IN ('cash', 'credit', 'debit', 'online')),
-  paid_at TIMESTAMP NOT NULL DEFAULT NOW()
+  paid_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_payment_renting
+    FOREIGN KEY (renting_id) REFERENCES renting(renting_id) ON DELETE CASCADE,
+  CONSTRAINT fk_payment_employee
+    FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE RESTRICT
 );
 
 CREATE OR REPLACE FUNCTION fn_validate_room_availability()
