@@ -65,8 +65,14 @@ INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, addr
 SELECT
   lpad((200000000 + g)::text, 9, '0'),
   'SIN',
-  (ARRAY['Maya','Noah','Liam','Olivia','Ethan','Sophia','Lucas','Ava','Mila','Leo'])[((g - 1) % 10) + 1],
-  (ARRAY['Patel','Nguyen','Martin','Singh','Brown','Lopez','Khan','Wilson','Carter','Dubois'])[((g - 1) % 10) + 1] || g,
+  (ARRAY[
+    'Liam','Noah','Oliver','Elijah','James','William','Benjamin','Lucas','Henry','Theodore',
+    'Emma','Olivia','Ava','Sophia','Isabella','Mia','Evelyn','Harper','Camila','Gianna'
+  ])[((g - 1) % 20) + 1],
+  (ARRAY[
+    'Smith','Johnson','Williams','Brown','Jones','Garcia','Miller','Davis','Rodriguez','Martinez',
+    'Hernandez','Lopez','Gonzalez','Wilson','Anderson','Thomas','Taylor','Moore','Jackson','Martin'
+  ])[(((g - 1) / 20) % 20) + 1],
   'guest' || g || '@staymail.com',
   '6138' || lpad(g::text, 6, '0'),
   (40 + g) || ' Willow Crescent'
@@ -90,8 +96,14 @@ INSERT INTO person (legal_id, id_type, first_name, last_name, email, phone, addr
 SELECT
   lpad((700000000 + g)::text, 9, '0'),
   'SIN',
-  (ARRAY['Amir','Chloe','Jordan','Ariana','Victor','Nina','Daniel','Ella','Marco','Riya'])[((g - 1) % 10) + 1],
-  (ARRAY['Adams','Bennett','Clark','Diaz','Edwards','Fischer','Gray','Hughes','Iqbal','Jacobs'])[((g - 1) % 10) + 1] || g,
+  (ARRAY[
+    'Liam','Noah','Oliver','Elijah','James','William','Benjamin','Lucas','Henry','Theodore',
+    'Emma','Olivia','Ava','Sophia','Isabella','Mia','Evelyn','Harper','Camila','Gianna'
+  ])[((120 + g - 1) % 20) + 1],
+  (ARRAY[
+    'Smith','Johnson','Williams','Brown','Jones','Garcia','Miller','Davis','Rodriguez','Martinez',
+    'Hernandez','Lopez','Gonzalez','Wilson','Anderson','Thomas','Taylor','Moore','Jackson','Martin'
+  ])[(((120 + g - 1) / 20) % 20) + 1],
   'team' || g || '@workmail.com',
   '3439' || lpad(g::text, 6, '0'),
   (80 + g) || ' Lakeview Drive'
