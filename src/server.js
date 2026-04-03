@@ -1614,6 +1614,16 @@ app.get('/search', async (req, res) => {
       values.push(normalizedStatus);
       conditions.push(`r.current_status = $${values.length}`);
     }
+    if (q.issue_preference) {
+      const issuePreference = parseEnum(
+        q.issue_preference,
+        ['issues_ok', 'no_issues'],
+        'Issues preference'
+      );
+      if (issuePreference === 'no_issues') {
+        conditions.push(`COALESCE(NULLIF(BTRIM(r.issues), ''), NULL) IS NULL`);
+      }
+    }
     if (isStaffRole) {
       values.push(staffHotelId);
       conditions.push(`h.hotel_id = $${values.length}`);
@@ -1657,6 +1667,7 @@ app.get('/search', async (req, res) => {
         r.has_mountain_view,
         r.is_extendable,
         r.amenities,
+        r.issues,
         r.current_status,
         h.hotel_id,
         h.hotel_name,

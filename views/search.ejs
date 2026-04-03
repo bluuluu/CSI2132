@@ -58,6 +58,13 @@
         <% }) %>
       </select>
     </label>
+    <label>Issues Preference
+      <select name="issue_preference">
+        <option value="">Any</option>
+        <option value="issues_ok" <%= filters.issue_preference === 'issues_ok' ? 'selected' : '' %>>Doesn't mind issues</option>
+        <option value="no_issues" <%= filters.issue_preference === 'no_issues' ? 'selected' : '' %>>No issues only</option>
+      </select>
+    </label>
     <label>Min Hotel Rooms <input type="number" min="1" name="total_rooms_min" value="<%= filters.total_rooms_min || '' %>" /></label>
     <label>Max Room Price <input type="number" min="1" step="0.01" name="max_price" value="<%= filters.max_price || '' %>" /></label>
     <div class="actions">
@@ -75,12 +82,12 @@
       <thead>
         <tr>
           <th>Room ID</th><th>Room #</th><th>Hotel</th><th>Chain</th><th>Area</th><th>Category</th>
-          <th>Capacity</th><th>Price</th><th>Status</th><th>Amenities</th><th>Availability Calendar</th><th>Book</th>
+          <th>Capacity</th><th>Price</th><th>Status</th><th>Amenities</th><th>Issues</th><th>Availability Calendar</th><th>Book</th>
         </tr>
       </thead>
       <tbody>
         <% if (rooms.length === 0) { %>
-          <tr><td colspan="12" class="data-empty">No rooms found for the current filter combination.</td></tr>
+          <tr><td colspan="13" class="data-empty">No rooms found for the current filter combination.</td></tr>
         <% } %>
         <% rooms.forEach(room => { %>
           <% const unavailableRanges = unavailableRangesByRoom[String(room.room_id)] || []; %>
@@ -96,6 +103,7 @@
             <td>$<%= room.base_price %></td>
             <td><span class="status-badge status-<%= (room.current_status || '').replace(/[^a-z_]/g, '_') %>"><%= room.current_status %></span></td>
             <td><%= room.amenities %></td>
+            <td><%= room.issues ? room.issues : 'None reported' %></td>
             <td>
               <button
                 type="button"
