@@ -25,7 +25,7 @@ class Box:
     h: float
 
 
-def draw_entity(ax, b: Box, subtitle: str | None = None):
+def draw_entity(ax, b: Box, subtitle: str | None = None, attr_lines: list[str] | None = None):
     patch = FancyBboxPatch(
         (b.x, b.y), b.w, b.h,
         boxstyle='round,pad=0.01,rounding_size=0.01',
@@ -34,9 +34,15 @@ def draw_entity(ax, b: Box, subtitle: str | None = None):
         facecolor='#f6f6f6'
     )
     ax.add_patch(patch)
-    ax.text(b.x + b.w / 2, b.y + b.h * 0.60, b.name, ha='center', va='center', fontsize=10, fontweight='bold')
+    ax.text(b.x + b.w / 2, b.y + b.h * 0.78, b.name, ha='center', va='center', fontsize=10, fontweight='bold')
     if subtitle:
-        ax.text(b.x + b.w / 2, b.y + b.h * 0.28, subtitle, ha='center', va='center', fontsize=8)
+        ax.text(b.x + b.w / 2, b.y + b.h * 0.58, subtitle, ha='center', va='center', fontsize=7.5)
+    if attr_lines:
+        y = b.y + b.h * 0.42
+        step = b.h * 0.14
+        for line in attr_lines:
+            ax.text(b.x + b.w / 2, y, line, ha='center', va='center', fontsize=6.2, color='#303030')
+            y -= step
 
 
 def draw_relationship(ax, label: str, x: float, y: float, w: float = 0.07, h: float = 0.04):
@@ -88,24 +94,38 @@ def draw_page_er(ax):
     ax.text(0.5, 0.975, 'eHotels ER Diagram (Current Schema)', ha='center', va='top', fontsize=14, fontweight='bold')
 
     entities = {
-        'hotel_chain': Box('HotelChain', 0.05, 0.78, 0.14, 0.08),
-        'hotel': Box('Hotel', 0.29, 0.78, 0.14, 0.08),
-        'room': Box('Room', 0.53, 0.78, 0.14, 0.08),
-        'person': Box('Person', 0.05, 0.56, 0.14, 0.08),
-        'customer': Box('Customer', 0.29, 0.56, 0.14, 0.08),
-        'employee': Box('Employee', 0.53, 0.56, 0.14, 0.08),
-        'auth': Box('AuthAccount', 0.77, 0.56, 0.16, 0.08),
-        'booking': Box('Booking', 0.17, 0.30, 0.14, 0.08),
-        'renting': Box('Renting', 0.41, 0.30, 0.14, 0.08),
-        'payment': Box('Payment', 0.65, 0.30, 0.14, 0.08),
-        'archive': Box('Archive', 0.41, 0.10, 0.14, 0.08),
+        'hotel_chain': Box('HotelChain', 0.05, 0.78, 0.16, 0.12),
+        'hotel': Box('Hotel', 0.29, 0.78, 0.16, 0.12),
+        'room': Box('Room', 0.53, 0.78, 0.16, 0.12),
+        'person': Box('Person', 0.05, 0.56, 0.16, 0.12),
+        'customer': Box('Customer', 0.29, 0.56, 0.16, 0.12),
+        'employee': Box('Employee', 0.53, 0.56, 0.16, 0.12),
+        'auth': Box('AuthAccount', 0.77, 0.56, 0.18, 0.12),
+        'booking': Box('Booking', 0.17, 0.30, 0.16, 0.12),
+        'renting': Box('Renting', 0.41, 0.30, 0.16, 0.12),
+        'payment': Box('Payment', 0.65, 0.30, 0.16, 0.12),
+        'archive': Box('Archive', 0.41, 0.10, 0.16, 0.12),
+    }
+
+    er_attrs = {
+        'hotel_chain': ['chain_id (PK)', 'chain_name', 'central_office_address'],
+        'hotel': ['hotel_id (PK), chain_id (FK)', 'hotel_name, category, total_rooms', 'address_line, contact_email, contact_phone'],
+        'room': ['room_id (PK), hotel_id (FK)', 'room_number, capacity, base_price', 'amenities, issues, current_status'],
+        'person': ['legal_id (PK), id_type', 'first_name, last_name', 'email, phone, address_line'],
+        'customer': ['customer_id (PK), legal_id (FK UQ)', 'hotel_id (FK nullable)', 'registration_date'],
+        'employee': ['employee_id (PK), legal_id (FK UQ)', 'hotel_id (FK), role_title', 'hired_on, is_manager'],
+        'auth': ['account_id (PK), role, username', 'employee_id/customer_id (FK UQ)', 'is_active, created_at'],
+        'booking': ['booking_id (PK), room_id/customer_id (FK)', 'created_by_employee_id (FK nullable)', 'start_date, end_date, status'],
+        'renting': ['renting_id (PK), room/customer/employee (FK)', 'source_booking_id (FK nullable)', 'start_date, end_date, status'],
+        'payment': ['payment_id (PK), renting_id (FK)', 'employee_id (FK)', 'amount, method, paid_at'],
+        'archive': ['archive_id (PK), record_type', 'source_booking_id/source_renting_id', 'chain/hotel/room/customer snapshots'],
     }
 
     for key, e in entities.items():
         subtitle = None
         if key == 'employee':
             subtitle = '(manager is employee role)'
-        draw_entity(ax, e, subtitle)
+        draw_entity(ax, e, subtitle, er_attrs.get(key))
 
     draw_relationship(ax, 'has', 0.21, 0.80)
     draw_relationship(ax, 'has', 0.45, 0.80)
@@ -171,18 +191,21 @@ def draw_page_relational(ax):
             'PK chain_id', 'chain_name (UQ)', 'central_office_address', 'contact_email', 'contact_phone'
         ]),
         'hotel': (Box('hotel', 0.28, 0.72, 0.20, 0.26), [
-            'PK hotel_id', 'FK chain_id -> hotel_chain.chain_id', 'hotel_name', 'category', 'total_rooms', 'address_line'
+            'PK hotel_id', 'FK chain_id -> hotel_chain.chain_id', 'hotel_name', 'category', 'total_rooms',
+            'address_line', 'contact_email', 'contact_phone'
         ]),
         'room': (Box('room', 0.53, 0.70, 0.20, 0.28), [
             'PK room_id',
             'FK hotel_id -> hotel.hotel_id',
             'FK hotel_room_id -> hotel.hotel_id (alias)',
+            'room_number',
             'capacity / room_capacity',
             'base_price / price',
             'view + has_sea_view + has_mountain_view',
             'current_status / status',
             'issues / problems',
-            'is_extendable / extendable'
+            'is_extendable / extendable',
+            'amenities'
         ]),
         'person': (Box('person', 0.03, 0.42, 0.20, 0.28), [
             'PK legal_id (SIN)',
@@ -190,7 +213,8 @@ def draw_page_relational(ax):
             'first_name',
             'last_name',
             'email (UQ)',
-            'phone'
+            'phone',
+            'address_line'
         ]),
         'customer': (Box('customer', 0.28, 0.48, 0.20, 0.18), [
             'PK customer_id',
@@ -203,6 +227,7 @@ def draw_page_relational(ax):
             'UQ + FK legal_id -> person.legal_id',
             'FK hotel_id -> hotel.hotel_id',
             'role_title',
+            'hired_on',
             'is_manager'
         ]),
         'auth_account': (Box('auth_account', 0.78, 0.45, 0.20, 0.24), [
@@ -211,7 +236,9 @@ def draw_page_relational(ax):
             'username (UQ)',
             'UQ + FK employee_id -> employee.employee_id (nullable)',
             'UQ + FK customer_id -> customer.customer_id (nullable)',
-            'is_active'
+            'password_plain',
+            'is_active',
+            'created_at'
         ]),
         'booking': (Box('booking', 0.18, 0.13, 0.23, 0.24), [
             'PK booking_id',
@@ -220,7 +247,8 @@ def draw_page_relational(ax):
             'FK created_by_employee_id -> employee.employee_id (nullable)',
             'start_date',
             'end_date',
-            'status'
+            'status',
+            'created_at'
         ]),
         'renting': (Box('renting', 0.45, 0.10, 0.23, 0.26), [
             'PK renting_id',
@@ -230,7 +258,8 @@ def draw_page_relational(ax):
             'FK source_booking_id -> booking.booking_id (nullable)',
             'start_date',
             'end_date',
-            'status'
+            'status',
+            'created_at'
         ]),
         'payment': (Box('payment', 0.72, 0.13, 0.25, 0.20), [
             'PK payment_id', 'FK renting_id -> renting.renting_id', 'FK employee_id -> employee.employee_id',
@@ -240,7 +269,8 @@ def draw_page_relational(ax):
             'PK archive_id', 'record_type',
             'source_booking_id (logical ref, not FK)',
             'source_renting_id (logical ref, not FK)',
-            'customer_legal_id (snapshot)',
+            'chain_name, hotel_name, room_number',
+            'customer_full_name, customer_legal_id',
             'start_date', 'end_date', 'final_status'
         ]),
     }
