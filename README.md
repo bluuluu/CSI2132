@@ -27,6 +27,13 @@ Open the deployed web app here:
 
 Follow these steps in order from the project root.
 
+### Prerequisites (install before starting)
+
+- Node.js 18+ (includes `npm`)
+- PostgreSQL 15+ (server + `psql` CLI)
+- Git (for cloning)
+- Optional GUI DB client: DBeaver or pgAdmin
+
 ### 1) Install dependencies
 
 ```bash
@@ -77,6 +84,15 @@ psql -d ehotels -f sql/seed.sql
 psql -d ehotels -f sql/queries.sql
 ```
 
+If your local PostgreSQL role is not the default one:
+
+```bash
+createdb -U <db_user> ehotels
+psql -U <db_user> -d ehotels -f sql/schema.sql
+psql -U <db_user> -d ehotels -f sql/seed.sql
+psql -U <db_user> -d ehotels -f sql/queries.sql
+```
+
 ### 5) Run the web app
 
 ```bash
@@ -88,6 +104,31 @@ Open:
 `http://localhost:3000`
 
 Keep this terminal running while using the app.
+
+## Reproducing The Same Database State
+
+You have two options:
+
+- Option A (recommended for graders): use `sql/schema.sql` + `sql/seed.sql` (+ optional `sql/queries.sql` demos).  
+  This reproduces the official deliverable baseline consistently.
+- Option B (exact personal snapshot): export your current local DB and include the dump in your submission zip.
+
+### Option B commands (exact snapshot from your machine)
+
+From your machine (after your latest edits/data):
+
+```bash
+pg_dump -d ehotels --clean --if-exists --no-owner --no-privileges > sql/evaluator_snapshot.sql
+```
+
+Then the evaluator can load that exact state:
+
+```bash
+createdb ehotels
+psql -d ehotels -f sql/evaluator_snapshot.sql
+```
+
+Note: `sql/current_database_dump.sql` is a legacy dump from an older schema iteration and is not the recommended grading snapshot.
 
 ## Role-Based Login
 
@@ -188,3 +229,4 @@ You can also start from `/login` and choose a role card.
 - Archive history intentionally excludes payment-history fields (per rubric requirement).
 - Customer self-disable and self-delete are blocked while active/reserved stays exist; staff can still manage customer account status from their panel.
 - The UI is intentionally form-driven to match project rubric requirements for non-SQL users.
+- A full installation/replication handout is included at `report/installation_and_database_replication_guide.pdf`.
