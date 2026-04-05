@@ -190,13 +190,17 @@ CREATE TABLE payment (
     FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE RESTRICT
 );
 
+-- Trigger function: block overlapping bookings/rentings for the same room or customer.
 CREATE OR REPLACE FUNCTION fn_validate_room_availability()
 RETURNS TRIGGER AS $$
 DECLARE
   overlap_count INT;
 BEGIN
+  -- Validate booking inserts/updates.
   IF TG_TABLE_NAME = 'booking' THEN
     IF NEW.status IN ('reserved', 'checked_in') THEN
+      -- Room cannot have two active/reserved bookings with overlapping dates.
+      -- [) means start inclusive, end exclusive.
       SELECT COUNT(*) INTO overlap_count
       FROM booking b
       WHERE b.room_id = NEW.room_id
@@ -208,6 +212,7 @@ BEGIN
         RAISE EXCEPTION 'Room % already has an overlapping booking', NEW.room_id;
       END IF;
 
+      -- Room also cannot overlap with an active renting.
       SELECT COUNT(*) INTO overlap_count
       FROM renting r
       WHERE r.room_id = NEW.room_id
@@ -218,6 +223,7 @@ BEGIN
         RAISE EXCEPTION 'Room % already has an overlapping renting', NEW.room_id;
       END IF;
 
+      -- A customer cannot hold overlapping bookings.
       SELECT COUNT(*) INTO overlap_count
       FROM booking b
       WHERE b.customer_id = NEW.customer_id
@@ -229,6 +235,7 @@ BEGIN
         RAISE EXCEPTION 'Customer % already has an overlapping booking', NEW.customer_id;
       END IF;
 
+      -- A customer cannot overlap a booking with an active renting.
       SELECT COUNT(*) INTO overlap_count
       FROM renting r
       WHERE r.customer_id = NEW.customer_id
@@ -239,8 +246,10 @@ BEGIN
         RAISE EXCEPTION 'Customer % already has an overlapping renting', NEW.customer_id;
       END IF;
     END IF;
+  -- Validate renting inserts/updates.
   ELSIF TG_TABLE_NAME = 'renting' THEN
     IF NEW.status = 'active' THEN
+      -- Room cannot have two active rentings at the same time.
       SELECT COUNT(*) INTO overlap_count
       FROM renting r
       WHERE r.room_id = NEW.room_id
@@ -252,6 +261,8 @@ BEGIN
         RAISE EXCEPTION 'Room % already has an overlapping renting', NEW.room_id;
       END IF;
 
+      -- Active renting cannot overlap with reserved/checked-in bookings.
+      -- Ignore source booking when transforming booking -> renting.
       SELECT COUNT(*) INTO overlap_count
       FROM booking b
       WHERE b.room_id = NEW.room_id
@@ -263,6 +274,7 @@ BEGIN
         RAISE EXCEPTION 'Room % already has an overlapping booking', NEW.room_id;
       END IF;
 
+      -- A customer cannot have overlapping active rentings.
       SELECT COUNT(*) INTO overlap_count
       FROM renting r
       WHERE r.customer_id = NEW.customer_id
@@ -274,6 +286,7 @@ BEGIN
         RAISE EXCEPTION 'Customer % already has an overlapping renting', NEW.customer_id;
       END IF;
 
+      -- A customer cannot overlap active renting with active/reserved booking.
       SELECT COUNT(*) INTO overlap_count
       FROM booking b
       WHERE b.customer_id = NEW.customer_id
@@ -291,6 +304,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Helper function: recompute room.current_status from active booking/renting rows.
 CREATE OR REPLACE FUNCTION fn_sync_room_status(target_room_id INT)
 RETURNS VOID AS $$
 DECLARE
@@ -322,6 +336,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger function wrapper: sync room status after booking row changes.
 CREATE OR REPLACE FUNCTION fn_after_booking_change()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -330,6 +345,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger function wrapper: sync room status after renting row changes.
 CREATE OR REPLACE FUNCTION fn_after_renting_change()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -338,6 +354,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger function: archive booking snapshots when booking becomes completed/cancelled.
 CREATE OR REPLACE FUNCTION fn_archive_booking()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -385,6 +402,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger function: archive renting snapshots when renting becomes completed/cancelled.
 CREATE OR REPLACE FUNCTION fn_archive_renting()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -432,6 +450,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger group: validate booking/renting availability before write.
 CREATE TRIGGER trg_booking_validate
 BEFORE INSERT OR UPDATE ON booking
 FOR EACH ROW EXECUTE FUNCTION fn_validate_room_availability();
@@ -440,6 +459,7 @@ CREATE TRIGGER trg_renting_validate
 BEFORE INSERT OR UPDATE ON renting
 FOR EACH ROW EXECUTE FUNCTION fn_validate_room_availability();
 
+-- Trigger group: keep room.current_status in sync after booking/renting changes.
 CREATE TRIGGER trg_booking_status_sync
 AFTER INSERT OR UPDATE OR DELETE ON booking
 FOR EACH ROW EXECUTE FUNCTION fn_after_booking_change();
@@ -448,6 +468,7 @@ CREATE TRIGGER trg_renting_status_sync
 AFTER INSERT OR UPDATE OR DELETE ON renting
 FOR EACH ROW EXECUTE FUNCTION fn_after_renting_change();
 
+-- Trigger group: archive booking/renting rows on status transitions and edge-case inserts.
 CREATE TRIGGER trg_archive_booking
 AFTER UPDATE OF status ON booking
 FOR EACH ROW
@@ -472,6 +493,7 @@ FOR EACH ROW
 WHEN (NEW.status IN ('completed', 'cancelled'))
 EXECUTE FUNCTION fn_archive_renting();
 
+-- One-time backfill: ensure already completed/cancelled records exist in archive.
 INSERT INTO archive (
   record_type,
   source_booking_id,
