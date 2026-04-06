@@ -130,7 +130,7 @@ createdb ehotels
 psql -d ehotels -f sql/evaluator_snapshot.sql
 ```
 
-Note: `sql/current_database_dump.sql` is a legacy dump from an older schema iteration and is not the recommended grading snapshot.
+Note: include `sql/evaluator_snapshot.sql` only if you want graders to load your exact current local database state.
 
 ## Role-Based Login
 

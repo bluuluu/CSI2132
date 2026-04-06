@@ -1,5 +1,4 @@
 -- Run in terminal: psql -d ehotels -f sql/queries/09_q5_employees_at_hotel_3.sql
--- Q5: Retrieve all employees working at hotel ID 3
 SELECT
   e.employee_id,
   e.legal_id,
