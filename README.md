@@ -84,6 +84,8 @@ psql -d ehotels -f sql/seed.sql
 psql -d ehotels -f sql/queries.sql
 ```
 
+No CSV import step is required. Seed data is inserted by `sql/seed.sql`.
+
 If your local PostgreSQL role is not the default one:
 
 ```bash

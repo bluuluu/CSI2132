@@ -3,7 +3,7 @@
 ## 1a) DBMS and Programming Languages
 
 ### DBMS
-- PostgreSQL 17
+- PostgreSQL (tested on PostgreSQL 15; compatible with newer versions)
 
 ### Programming Languages / Frameworks
 - JavaScript (Node.js)
@@ -45,6 +45,8 @@ CREATE DATABASE ehotels;
 psql -U postgres -d ehotels -f sql/schema.sql
 psql -U postgres -d ehotels -f sql/seed.sql
 ```
+
+No CSV import is required; `sql/seed.sql` inserts the baseline dataset directly.
 
 7. (Optional) Run sample queries:
 ```bash
@@ -122,6 +124,7 @@ CREATE OR REPLACE VIEW v_hotel_capacity_aggregate AS ...;
 - `sql/schema.sql`
 - `sql/seed.sql`
 - `sql/queries.sql`
+- `sql/queries/` (individual query demo scripts used in evidence/video)
 
 ## Included Application Code
 
@@ -129,3 +132,5 @@ CREATE OR REPLACE VIEW v_hotel_capacity_aggregate AS ...;
 - `src/db.js`
 - `views/`
 - `public/styles.css`
+- `package.json` and `package-lock.json` (dependency definitions)
+- `.env.example` (environment template for correctors)

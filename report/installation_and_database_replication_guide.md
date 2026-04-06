@@ -77,6 +77,8 @@ psql -U <your_postgres_role> -d ehotels -f sql/seed.sql
 psql -U <your_postgres_role> -d ehotels -f sql/queries.sql
 ```
 
+No CSV import is required for this project setup. Data population is handled by `sql/seed.sql`.
+
 If your local role is already the default role:
 
 ```bash
