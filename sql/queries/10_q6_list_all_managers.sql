@@ -1,4 +1,3 @@
--- Q6: List all managers across all hotels/chains.
 -- Run in terminal:
 -- psql -d ehotels -U luuluu2 -f sql/queries/10_q6_list_all_managers.sql
 SELECT
