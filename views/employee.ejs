@@ -1,5 +1,22 @@
 <%- include('partials/header', { title: 'Employee Panel', message }) %>
 <% const adminNeedsEmployeeId = auth.role === 'admin'; %>
+<%
+  const easternDatePartsFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Toronto',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const toEasternIsoDate = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.slice(0, 10);
+    const parts = easternDatePartsFormatter.formatToParts(new Date(value));
+    const year = parts.find((p) => p.type === 'year')?.value;
+    const month = parts.find((p) => p.type === 'month')?.value;
+    const day = parts.find((p) => p.type === 'day')?.value;
+    return `${year}-${month}-${day}`;
+  };
+%>
 
 <section class="page-intro">
   <h2>Front Desk Operations</h2>
@@ -113,13 +130,12 @@
     <table>
       <thead><tr><th>Booking ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
-      <% const easternDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }); %>
       <% if (activeBookings.length === 0) { %>
         <tr><td colspan="7" class="data-empty">No open bookings found.</td></tr>
       <% } %>
       <% activeBookings.forEach(b => { %>
-        <% const bookingStartIso = typeof b.start_date === 'string' ? b.start_date.slice(0,10) : easternDateFormatter.format(b.start_date); %>
-        <% const bookingEndIso = typeof b.end_date === 'string' ? b.end_date.slice(0,10) : easternDateFormatter.format(b.end_date); %>
+        <% const bookingStartIso = toEasternIsoDate(b.start_date); %>
+        <% const bookingEndIso = toEasternIsoDate(b.end_date); %>
         <tr>
           <td><%= b.booking_id %></td>
           <td><%= b.room_id %></td>
@@ -177,13 +193,15 @@
         <tr><td colspan="8" class="data-empty">No active rentings found.</td></tr>
       <% } %>
       <% activeRentings.forEach(r => { %>
+        <% const rentingStartIso = toEasternIsoDate(r.start_date); %>
+        <% const rentingEndIso = toEasternIsoDate(r.end_date); %>
         <tr>
           <td><%= r.renting_id %></td>
           <td><%= r.room_id %></td>
           <td><%= r.customer_sin %></td>
           <td><%= r.employee_id %></td>
-          <td><%= r.start_date.toISOString().slice(0,10) %></td>
-          <td><%= r.end_date.toISOString().slice(0,10) %></td>
+          <td><%= rentingStartIso %></td>
+          <td><%= rentingEndIso %></td>
           <td><span class="status-badge status-<%= r.status.replace(/[^a-z_]/g, '_') %>"><%= r.status %></span></td>
           <td>
             <% if (r.status === 'active') { %>

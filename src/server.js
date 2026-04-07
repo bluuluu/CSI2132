@@ -2146,8 +2146,8 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       b.room_id,
                       b.customer_id,
                       p.legal_id AS customer_sin,
-                      b.start_date,
-                      b.end_date,
+                      b.start_date::text AS start_date,
+                      b.end_date::text AS end_date,
                       b.status
                     FROM booking b
                     JOIN room rm ON rm.room_id = b.room_id
@@ -2166,8 +2166,8 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       rt.customer_id,
                       p.legal_id AS customer_sin,
                       rt.employee_id,
-                      rt.start_date,
-                      rt.end_date,
+                      rt.start_date::text AS start_date,
+                      rt.end_date::text AS end_date,
                       rt.status
                     FROM renting rt
                     JOIN room rm ON rm.room_id = rt.room_id
@@ -2213,8 +2213,8 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       b.room_id,
                       b.customer_id,
                       p.legal_id AS customer_sin,
-                      b.start_date,
-                      b.end_date,
+                      b.start_date::text AS start_date,
+                      b.end_date::text AS end_date,
                       b.status
                     FROM booking b
                     JOIN customer c ON c.customer_id = b.customer_id
@@ -2231,8 +2231,8 @@ app.get('/employee', requireRole(['employee', 'manager', 'admin']), async (req, 
                       rt.customer_id,
                       p.legal_id AS customer_sin,
                       rt.employee_id,
-                      rt.start_date,
-                      rt.end_date,
+                      rt.start_date::text AS start_date,
+                      rt.end_date::text AS end_date,
                       rt.status
                     FROM renting rt
                     JOIN customer c ON c.customer_id = rt.customer_id
@@ -2351,7 +2351,7 @@ app.patch('/employee/bookings/:id/cancel', requireRole(['employee', 'manager', '
 
     await client.query('BEGIN');
     const bookingResult = await client.query(
-      `SELECT b.booking_id, b.status, b.end_date, rm.hotel_id
+      `SELECT b.booking_id, b.status, b.end_date::text AS end_date, rm.hotel_id
        FROM booking b
        JOIN room rm ON rm.room_id = b.room_id
        WHERE b.booking_id = $1
@@ -2448,7 +2448,7 @@ app.patch('/employee/bookings/:id/check-in', requireRole(['employee', 'manager',
 
     await client.query('BEGIN');
     const bookingResult = await client.query(
-      `SELECT b.booking_id, b.status, b.start_date, rm.hotel_id
+      `SELECT b.booking_id, b.status, b.start_date::text AS start_date, rm.hotel_id
        FROM booking b
        JOIN room rm ON rm.room_id = b.room_id
        WHERE b.booking_id = $1
@@ -2493,7 +2493,7 @@ app.patch('/employee/bookings/:id/complete', requireRole(['employee', 'manager',
 
     await client.query('BEGIN');
     const bookingResult = await client.query(
-      `SELECT b.booking_id, b.status, b.end_date, rm.hotel_id
+      `SELECT b.booking_id, b.status, b.end_date::text AS end_date, rm.hotel_id
        FROM booking b
        JOIN room rm ON rm.room_id = b.room_id
        WHERE b.booking_id = $1
@@ -2540,7 +2540,13 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
 
     await client.query('BEGIN');
     const bookingResult = await client.query(
-      `SELECT b.booking_id, b.room_id, b.customer_id, b.start_date, b.end_date, b.status, rm.hotel_id
+      `SELECT b.booking_id,
+              b.room_id,
+              b.customer_id,
+              b.start_date::text AS start_date,
+              b.end_date::text AS end_date,
+              b.status,
+              rm.hotel_id
        FROM booking b
        JOIN room rm ON rm.room_id = b.room_id
        WHERE b.booking_id = $1
@@ -2567,7 +2573,7 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
 
     await client.query(
       `INSERT INTO renting (room_id, customer_id, employee_id, source_booking_id, start_date, end_date, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+       VALUES ($1, $2, $3, $4, $5::date, $6::date, 'active')`,
       [b.room_id, b.customer_id, employeeId, b.booking_id, b.start_date, b.end_date]
     );
 
@@ -2747,7 +2753,7 @@ app.get('/manage/customers', requireRole(['employee', 'manager', 'admin']), asyn
            LEFT JOIN auth_account a
              ON a.customer_id = c.customer_id
             AND a.role = 'customer'
-           WHERE c.hotel_id = $1 OR c.hotel_id IS NULL
+           WHERE c.hotel_id = $1
            ORDER BY c.customer_id
            LIMIT 300`,
           [staffHotelId]
@@ -2809,6 +2815,9 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
     const normalizedPhone = normalizePhone(phone);
     const normalizedAddress = normalizeString(address_line, 'Address', 255);
     const normalizedRegistrationDate = parseDateInput(registration_date, 'Registration date');
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
+    const assignedHotelId = isStaffRole ? staffHotelId : null;
 
     await client.query('BEGIN');
     const person = await client.query(
@@ -2828,7 +2837,7 @@ app.post('/manage/customers', requireRole(['employee', 'manager', 'admin']), asy
       `INSERT INTO customer (legal_id, hotel_id, registration_date)
        VALUES ($1, $2, $3)
        RETURNING customer_id`,
-      [person.rows[0].legal_id, null, normalizedRegistrationDate]
+      [person.rows[0].legal_id, assignedHotelId, normalizedRegistrationDate]
     );
     const customerId = customer.rows[0].customer_id;
     await client.query(
@@ -2869,7 +2878,7 @@ app.patch('/manage/customers/:id', requireRole(['employee', 'manager', 'admin'])
       [customerId]
     );
     if (customer.rowCount === 0) throw new Error('Customer not found.');
-    if (isStaffRole && customer.rows[0].hotel_id && customer.rows[0].hotel_id !== staffHotelId) {
+    if (isStaffRole && customer.rows[0].hotel_id !== staffHotelId) {
       throw new Error('You can only update customers registered at your hotel.');
     }
     const legalId = customer.rows[0].legal_id;
@@ -2911,13 +2920,13 @@ app.patch('/manage/customers/:id/account-status', requireRole(['employee', 'mana
          ON a.customer_id = c.customer_id
         AND a.role = 'customer'
        WHERE c.customer_id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF c`,
       [customerId]
     );
     if (customerAccount.rowCount === 0) {
       throw new Error('Customer not found.');
     }
-    if (isStaffRole && customerAccount.rows[0].hotel_id && customerAccount.rows[0].hotel_id !== staffHotelId) {
+    if (isStaffRole && customerAccount.rows[0].hotel_id !== staffHotelId) {
       throw new Error('You can only manage customer accounts registered at your hotel.');
     }
 
@@ -2961,7 +2970,7 @@ app.delete('/manage/customers/:id', requireRole(['employee', 'manager', 'admin']
       [customerId]
     );
     if (c.rowCount === 0) throw new Error('Customer not found.');
-    if (isStaffRole && c.rows[0].hotel_id && c.rows[0].hotel_id !== staffHotelId) {
+    if (isStaffRole && c.rows[0].hotel_id !== staffHotelId) {
       throw new Error('You can only delete customers assigned to your hotel.');
     }
     await archiveCustomerHistory(client, customerId);
