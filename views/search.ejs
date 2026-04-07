@@ -7,7 +7,7 @@
 
 <section class="card">
   <h2>Search Filters</h2>
-  <form method="GET" action="/search" class="grid form-grid" id="searchForm" data-autosubmit="true">
+  <form method="GET" action="/search" class="grid form-grid" id="searchForm">
     <label>Start Date
       <input
         type="date"
@@ -72,7 +72,7 @@
       <a href="/search" class="btn-secondary">Reset</a>
     </div>
   </form>
-  <p class="helper-line">Autosubmit is enabled. If you set dates, provide both start and end to filter true availability for that window.</p>
+  <p class="helper-line">Choose your filters, then click <strong>Search</strong>. If you set dates, provide both start and end to filter true availability for that window.</p>
 </section>
 
 <section class="card">
@@ -195,23 +195,6 @@
 
 <script>
   (function () {
-    const form = document.getElementById('searchForm');
-    if (!form) return;
-
-    let timeoutId = null;
-    const triggerSubmit = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => form.submit(), 260);
-    };
-
-    form.querySelectorAll('input, select').forEach((el) => {
-      if (el.type === 'number' || el.type === 'text') {
-        el.addEventListener('input', triggerSubmit);
-      } else {
-        el.addEventListener('change', triggerSubmit);
-      }
-    });
-
     const modal = document.getElementById('availabilityModal');
     const modalTitle = document.getElementById('availabilityTitle');
     const modalCalendar = document.getElementById('availabilityCalendar');
