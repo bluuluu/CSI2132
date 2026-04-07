@@ -3096,19 +3096,14 @@ app.post('/manage/employees', requireRole(['manager', 'admin']), async (req, res
     await client.query('BEGIN');
     const hotelStaffCounts = await client.query(
       `SELECT
-         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count,
-         SUM(CASE WHEN NOT is_manager THEN 1 ELSE 0 END)::INT AS employee_count
+         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count
        FROM employee
        WHERE hotel_id = $1`,
       [normalizedHotelId]
     );
     const managerCount = hotelStaffCounts.rows[0].manager_count || 0;
-    const employeeCount = hotelStaffCounts.rows[0].employee_count || 0;
     if (normalizedAccountRole === 'manager' && managerCount >= 1) {
       throw new Error('Each hotel can have only one manager account.');
-    }
-    if (normalizedAccountRole === 'employee' && employeeCount >= 3) {
-      throw new Error('Each hotel can have at most 3 employee accounts.');
     }
 
     const person = await client.query(
@@ -3189,7 +3184,7 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
        FROM employee e
        LEFT JOIN auth_account a ON a.employee_id = e.employee_id
        WHERE e.employee_id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF e`,
       [employeeId]
     );
     if (employee.rowCount === 0) throw new Error('Employee not found.');
@@ -3208,20 +3203,15 @@ app.patch('/manage/employees/:id', requireRole(['manager', 'admin']), async (req
 
     const destinationStaffCounts = await client.query(
       `SELECT
-         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count,
-         SUM(CASE WHEN NOT is_manager THEN 1 ELSE 0 END)::INT AS employee_count
+         SUM(CASE WHEN is_manager THEN 1 ELSE 0 END)::INT AS manager_count
        FROM employee
        WHERE hotel_id = $1
          AND employee_id <> $2`,
       [normalizedHotelId, employeeId]
     );
     const managerCount = destinationStaffCounts.rows[0].manager_count || 0;
-    const employeeCount = destinationStaffCounts.rows[0].employee_count || 0;
     if (normalizedAccountRole === 'manager' && managerCount >= 1) {
       throw new Error('Each hotel can have only one manager account.');
-    }
-    if (normalizedAccountRole === 'employee' && employeeCount >= 3) {
-      throw new Error('Each hotel can have at most 3 employee accounts.');
     }
 
     await client.query(
@@ -3345,7 +3335,7 @@ app.delete('/manage/employees/:id', requireRole(['manager', 'admin']), async (re
        FROM employee e
        LEFT JOIN auth_account a ON a.employee_id = e.employee_id
        WHERE e.employee_id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF e`,
       [employeeId]
     );
     if (staffRecord.rowCount === 0) {
