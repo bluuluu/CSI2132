@@ -2438,6 +2438,51 @@ app.patch('/employee/bookings/:id/dates', requireRole(['employee', 'manager', 'a
   }
 });
 
+app.patch('/employee/bookings/:id/check-in', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const bookingId = parsePositiveInt(req.params.id, 'Booking');
+    const isStaffRole = req.auth.role === 'employee' || req.auth.role === 'manager';
+    const staffHotelId = isStaffRole ? await fetchStaffHotelId(req.auth.employeeId, 'Staff') : null;
+    const easternToday = easternTodayISO();
+
+    await client.query('BEGIN');
+    const bookingResult = await client.query(
+      `SELECT b.booking_id, b.status, b.start_date, rm.hotel_id
+       FROM booking b
+       JOIN room rm ON rm.room_id = b.room_id
+       WHERE b.booking_id = $1
+       FOR UPDATE`,
+      [bookingId]
+    );
+    if (bookingResult.rowCount === 0) {
+      throw new Error('Booking not found.');
+    }
+
+    const booking = bookingResult.rows[0];
+    if (isStaffRole && booking.hotel_id !== staffHotelId) {
+      throw new Error('You can only check in bookings from your assigned hotel.');
+    }
+    if (booking.status !== 'reserved') {
+      throw new Error('Only reserved bookings can be checked in.');
+    }
+
+    const bookingStartDate = toIsoDate(booking.start_date);
+    if (bookingStartDate !== easternToday) {
+      throw new Error(`Booking can be checked in only on its start date (${bookingStartDate}). Today is ${easternToday} (Eastern).`);
+    }
+
+    await client.query(`UPDATE booking SET status = 'checked_in' WHERE booking_id = $1`, [bookingId]);
+    await client.query('COMMIT');
+    redirectWith(res, '/employee', 'Booking checked in.', 'success');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    redirectWith(res, '/employee', err.message, 'error');
+  } finally {
+    client.release();
+  }
+});
+
 app.patch('/employee/bookings/:id/complete', requireRole(['employee', 'manager', 'admin']), async (req, res) => {
   const client = await db.getClient();
   try {
@@ -2508,17 +2553,16 @@ app.post('/employee/rentings/from-booking', requireRole(['employee', 'manager', 
     }
 
     const b = bookingResult.rows[0];
-    if (!['reserved', 'checked_in'].includes(b.status)) {
-      throw new Error('Booking cannot be transformed from current status.');
+    if (b.status !== 'checked_in') {
+      throw new Error('Only checked-in bookings can be transformed to renting.');
     }
     if (isStaffRole && b.hotel_id !== staffHotelId) {
-      throw new Error('You can only check in bookings from your assigned hotel.');
+      throw new Error('You can only transform bookings from your assigned hotel.');
     }
-    const bookingStartDate = typeof b.start_date === 'string'
-      ? b.start_date.slice(0, 10)
-      : new Date(b.start_date).toISOString().slice(0, 10);
-    if (bookingStartDate !== easternToday) {
-      throw new Error(`Only bookings that start today (${easternToday}, Eastern Time) can be checked in.`);
+    const bookingStartDate = toIsoDate(b.start_date);
+    const bookingEndDate = toIsoDate(b.end_date);
+    if (bookingStartDate > easternToday || bookingEndDate <= easternToday) {
+      throw new Error(`Booking can be transformed only during its active stay window (${bookingStartDate} to ${bookingEndDate}).`);
     }
 
     await client.query(

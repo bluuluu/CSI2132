@@ -7,8 +7,8 @@
 </section>
 
 <section class="card">
-  <h2>Transform Booking to Renting (Check-in)</h2>
-  <p class="helper-line">Use this when a customer arrives for a booking that starts today.</p>
+  <h2>Transform Booking to Renting</h2>
+  <p class="helper-line">Use this after the booking has been checked in. Enter the Booking ID to convert it into an active renting.</p>
   <form method="POST" action="/employee/rentings/from-booking" class="grid form-grid">
     <label>Booking ID <input type="number" name="booking_id" min="1" required /></label>
     <% if (adminNeedsEmployeeId) { %>
@@ -16,7 +16,7 @@
     <% } else { %>
       <span class="inline-note">Using signed-in employee ID.</span>
     <% } %>
-    <div class="actions"><button type="submit">Transform</button></div>
+    <div class="actions"><button type="submit">Transform to Renting</button></div>
   </form>
 </section>
 
@@ -111,14 +111,15 @@
   <h2>Open Bookings (Overdue + Upcoming)</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Booking ID</th><th>Room</th><th>Customer SIN</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
+      <% const easternDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }); %>
       <% if (activeBookings.length === 0) { %>
         <tr><td colspan="7" class="data-empty">No open bookings found.</td></tr>
       <% } %>
       <% activeBookings.forEach(b => { %>
-        <% const bookingStartIso = b.start_date.toISOString().slice(0,10); %>
-        <% const bookingEndIso = b.end_date.toISOString().slice(0,10); %>
+        <% const bookingStartIso = typeof b.start_date === 'string' ? b.start_date.slice(0,10) : easternDateFormatter.format(b.start_date); %>
+        <% const bookingEndIso = typeof b.end_date === 'string' ? b.end_date.slice(0,10) : easternDateFormatter.format(b.end_date); %>
         <tr>
           <td><%= b.booking_id %></td>
           <td><%= b.room_id %></td>
@@ -130,7 +131,13 @@
             <% const canCancel = (b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso >= easternToday; %>
             <% const canUpdateDates = b.status === 'reserved' && bookingEndIso >= easternToday; %>
             <% const canComplete = (b.status === 'reserved' || b.status === 'checked_in') && bookingEndIso < easternToday; %>
+            <% const canCheckIn = b.status === 'reserved' && bookingStartIso === easternToday; %>
             <div class="inline-form">
+              <% if (canCheckIn) { %>
+                <form method="POST" action="/employee/bookings/<%= b.booking_id %>/check-in?_method=PATCH" class="inline-form">
+                  <button type="submit">Check In (Booking)</button>
+                </form>
+              <% } %>
               <% if (canCancel) { %>
                 <form method="POST" action="/employee/bookings/<%= b.booking_id %>/cancel?_method=PATCH">
                   <button type="submit">Cancel</button>
@@ -148,7 +155,7 @@
                   <button type="submit">Mark Completed</button>
                 </form>
               <% } %>
-              <% if (!canCancel && !canUpdateDates && !canComplete) { %>
+              <% if (!canCheckIn && !canCancel && !canUpdateDates && !canComplete) { %>
                 <span class="muted">-</span>
               <% } %>
             </div>
