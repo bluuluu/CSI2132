@@ -20,8 +20,10 @@ Open the deployed web app here:
 - `src/db.js`: PostgreSQL connection layer.
 - `views/`: EJS pages for customer, employee, and CRUD workflows.
 - `public/styles.css`: Styling.
-- `report/deliverable2_report.md`: Deliverable 2 report content.
-- `report/video_timestamps_template.md`: Template for Table 1 timestamps.
+
+## Video Presentation
+- https://youtu.be/xcvwPfdYG-k
+
 
 ## Run Locally
 
@@ -193,42 +195,6 @@ You can also start from `/login` and choose a role card.
   - Can manage hotels/rooms/customers and SQL views
 
 
+\
 
-## What is Implemented
 
-- Room search with multi-criteria filters:
-  - dates, room capacity, area, hotel chain, category, total rooms, and price
-  - employee/manager search is scoped to their assigned hotel
-- Public room browsing plus authenticated booking flow (customer/staff/admin)
-- Role-based login for customer/employee(manager)/admin portals and permission controls
-- DB-backed login accounts (`auth_account`) for admin, manager, employee, and customer
-- Employee panel:
-  - booking -> renting transformation
-  - direct renting creation
-  - payment insertion for active rentings (cash/card UI)
-- Dedicated `/archives` page for completed/cancelled booking and renting history (customer, hotel, room, date, and status)
-- Front-desk customer registration by SIN
-- Customer self-signup (`/signup/customer`) with SIN-based login
-- DB-level SIN enforcement for all people (customers, employees, managers): `id_type='SIN'` and exactly 9 digits
-- Customers can exist unassigned (`hotel_id` NULL) and are attached to a hotel on first booking/renting
-- Baseline data guarantees at least 5 rooms per hotel, at least 1 manager per hotel, and at least 1 employee per hotel
-- Staff management enforces up to 3 employees and 1 manager per hotel
-- Account status workflows:
-  - admin can enable/disable employee, manager, and customer accounts
-  - manager can enable/disable employee and customer accounts in their hotel
-  - employee can enable/disable customer accounts in their hotel
-- Staff deletion:
-  - admin can fully delete employee or manager records
-  - manager can fully delete employee records in their hotel
-- CRUD pages for customers (staff/admin), and hotels/rooms (admin)
-- Required SQL Views displayed in UI
-- Triggers for overlap prevention, room status synchronization, and archiving
-- Indexes for common filter/query paths
-
-## Notes
-
-- Archive records keep nullable foreign keys to booking/renting (`ON DELETE SET NULL`) so history rows remain available even if source rows are deleted.
-- Archive history intentionally excludes payment-history fields (per rubric requirement).
-- Customer self-disable and self-delete are blocked while active/reserved stays exist; staff can still manage customer account status from their panel.
-- The UI is intentionally form-driven to match project rubric requirements for non-SQL users.
-- A full installation/replication handout is included at `report/installation_and_database_replication_guide.pdf`.
